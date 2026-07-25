@@ -42,6 +42,14 @@ updates:
     labels:
       - dependencies
       - python
+    # Direct dependencies only -- the ones actually declared in pyproject.toml.
+    # Without this, uv.lock's full transitive graph is fair game and Dependabot
+    # opens PRs for things like nvidia-cusparse and pydantic-core, which are
+    # pulled in by torch and pydantic and are not ours to pin. Transitive
+    # versions still move: they move when a direct dependency moves, or when
+    # `make lock` is run deliberately.
+    allow:
+      - dependency-type: direct
     groups:
       # Keep the dev toolchain moving together; these are low-risk and CI covers them.
       dev-tools:
