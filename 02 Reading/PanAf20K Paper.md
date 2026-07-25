@@ -19,12 +19,12 @@ updated: 2026-07-24
 
 Skimmed far enough to build the scaffold correctly — dataset scale, the PanAf500 subset, and the
 citation. **Not** yet read for annotation format, which is why
-[dataset docs](../docs/dataset.md) still refuse to document the schema.
+[dataset docs](../05%20Technical/dataset.md) still refuse to document the schema.
 
 ## What is already recorded elsewhere
 
-- Dataset background and limitations → [dataset docs](../docs/dataset.md)
-- The 9 action labels → [[PanAf500 Action Labels]]
+- Dataset background and limitations → [dataset docs](../05%20Technical/dataset.md)
+- The 9 action labels → [[dataset|the nine action labels]]
 - Citation and BibTeX → [references.bib](../references.bib)
 - Access, licence and folder layout → [data/README.md](../data/README.md)
 
@@ -41,4 +41,4 @@ _Anything to raise at the next check-in._
 
 ## Related
 
-[[PanAf500 Action Labels]] · [[PyTorch-Wildlife and MegaDetector]] · [[Phase 1 Task Spec]] · [[Reading List]]
+[[dataset|the nine action labels]] · [[PyTorch-Wildlife and MegaDetector]] · [[Phase 1 Task Spec]] · [[Reading List]]

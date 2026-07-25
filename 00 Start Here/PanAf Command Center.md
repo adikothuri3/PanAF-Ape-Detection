@@ -47,7 +47,7 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
    under its own licence, and download **5–10 clips only**.
 2. Fill in `data/sample_manifest.csv` from the template, with SHA-256 checksums and a
    `selected_reason` per clip. `provenance.file_sha256()` computes the digests; selection axes are
-   in [dataset docs](../docs/dataset.md).
+   in [dataset docs](../05%20Technical/dataset.md).
 3. Implement `panaf_ape_detection.data.manifest` then `.video`, tested against **synthetic** video
    so CI never needs the dataset.
 
@@ -94,14 +94,45 @@ Log every session, dead ends included — [[How We Work]]. `/log-session` drafts
 | Phase numbering | [[Four Phase Arc]] |
 | What Phase 1 asks for | [[Phase 1 Task Spec]] |
 | Working practice | [[How We Work]] |
-| The 9 behaviour labels | [[PanAf500 Action Labels]] |
-| Detector variants and defaults | [[MegaDetector Variants]] |
+| The 9 behaviour labels | [[dataset|the nine action labels]] |
+| Detector variants and defaults | [[model|MegaDetector variants]] |
 | Terms | [[Glossary]] |
-| Module design | [architecture](../docs/architecture.md) |
-| Dataset background and ethics | [dataset](../docs/dataset.md) |
-| What MegaDetector is and is not | [model](../docs/model.md) |
-| Reproducibility contract | [reproducibility](../docs/reproducibility.md) |
-| Three separate licences | [licensing](../docs/licensing.md) |
+| Module design | [architecture](../05%20Technical/architecture.md) |
+| Dataset background and ethics | [dataset](../05%20Technical/dataset.md) |
+| What MegaDetector is and is not | [model](../05%20Technical/model.md) |
+| Reproducibility contract | [reproducibility](../05%20Technical/reproducibility.md) |
+| Three separate licences | [licensing](../05%20Technical/licensing.md) |
+
+## Where documentation lives
+
+**All project documentation is in the numbered vault folders.** There is no `docs/` directory.
+
+| Folder | Holds |
+|---|---|
+| `00 Start Here/` | This note — the entry point |
+| `01 Onboarding/` | Project context, the four-phase arc, the Phase 1 spec, working practice |
+| `02 Reading/` | The onboarding reading list, one note per item |
+| `03 Check-ins/` | Weekly check-in template and notes |
+| `04 Reference/` | Cross-cutting reference — currently the [[Glossary]] |
+| `05 Technical/` | Architecture, dataset, model, licensing, reproducibility |
+
+Four things live outside the numbered folders because tooling pins them there, **not** because they
+are a second documentation system:
+
+| Path | Pinned by |
+|---|---|
+| `README.md` | `pyproject.toml` (`readme =`) — the wheel build fails without it; also the GitHub landing page |
+| `CLAUDE.md` | Claude Code loads project memory from the repository root |
+| `experiments/experiment_log.md` | The single running log; `make verify` and `/log-session` require this path |
+| `reports/phase1_writeup_template.md` | The Phase 1 deliverable; `make verify` requires this path |
+
+Small `README.md` files inside `data/`, `notebooks/` and `experiments/` are **directory signposts**,
+not documentation — GitHub renders them when browsing that folder, and they exist to be read at the
+moment you are about to touch those files. Substantive documentation belongs in a numbered folder.
+
+**The rule:** a fact has exactly one home. Everything else links to it. `04 Reference/` previously
+restated the detector variants and behaviour labels that `05 Technical/` already documented; those
+notes were merged into `model.md` and `dataset.md` rather than kept in sync by hand.
 
 ## Claude Workflow
 
@@ -127,8 +158,8 @@ runs ruff on edited Python only — the full gate stays manual.
    `.env`, or notebook output cells.
 3. **No fine-tuning.** Phase 1 is pretrained inference only.
 4. **No stubbed CLI commands.** Unimplemented stages are absent, not registered-and-raising.
-5. **One log, one write-up, one set of docs.** If a note would restate `docs/` or `experiments/`,
-   link instead.
+5. **One log, one write-up, one home per fact.** Documentation lives in the numbered vault folders.
+   If a note would restate another note, link instead — see [[#Where documentation lives]].
 6. **`data/raw/` is immutable.** Derived frames go to `data/interim/` or `artifacts/`.
 7. **Always pass the model variant explicitly** — the upstream defaults raise `ValueError`.
 
@@ -136,19 +167,19 @@ runs ruff on edited Python only — the full gate stays manual.
 
 - **PyTorch-Wildlife ignores `device=`.** Verified upstream bug: the model loads on CPU while
   reporting whatever you asked for. On Colab that means CPU speed with CUDA in the metadata. The
-  three-line fix and the verification helper are in [[MegaDetector Variants]]; Phase 1c must record
+  three-line fix and the verification helper are in [[model|MegaDetector variants]]; Phase 1c must record
   the device `runtime.module_device()` reports, never the requested one.
-- Annotation **file format** is unverified; the label list is not. See [[PanAf500 Action Labels]].
+- Annotation **file format** is unverified; the label list is not. See [[dataset|the nine action labels]].
 - Tracker backend undecided by design — chosen from 1c evidence. `sv.ByteTrack` is confirmed working
   under the locked NumPy 2.x.
 - Detection **quality is entirely unmeasured** — the only frames run through the model were
   synthetic noise.
 - **Tracked results must use `TrackedFrameDetections`.** A plain `FrameDetections` silently drops
-  `track_id` and `behavior_label` on write; see [architecture](../docs/architecture.md).
+  `track_id` and `behavior_label` on write; see [architecture](../05%20Technical/architecture.md).
 - Manifest **loading and checksum verification** are not implemented — `manifest.py` is the schema
   only. `provenance.file_sha256()` computes the digests in the meantime.
 - No code licence selected; the repo is public under default copyright. See
-  [licensing](../docs/licensing.md).
+  [licensing](../05%20Technical/licensing.md).
 
 ## Related
 

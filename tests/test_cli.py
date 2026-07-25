@@ -25,6 +25,11 @@ def invoke(*args: str):
     return runner.invoke(app, list(args))
 
 
+def unwrap(output: str) -> str:
+    """Collapse rich's terminal line-wrapping so substrings match reliably."""
+    return " ".join(output.split())
+
+
 def registered_command_names() -> set[str]:
     """Return the command names Typer will expose, independent of help layout."""
     return {
@@ -157,7 +162,9 @@ def test_validate_config_flags_unrecognised_variant(
     result = invoke("validate-config", "--config", str(write_config(config_data)))
 
     assert result.exit_code == 0, result.output
-    assert "docs/model.md" in result.output
+    # rich hard-wraps to the terminal width, so "05 Technical/model.md" can be
+    # split across lines. Collapse whitespace before matching.
+    assert "05 Technical/model.md" in unwrap(result.output)
 
 
 @pytest.mark.parametrize("command", ["doctor", "show-paths"])

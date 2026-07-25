@@ -6,6 +6,11 @@ The project brain lives in the **Obsidian vault at the repository root** — sta
 [PanAf Command Center](00%20Start%20Here/PanAf%20Command%20Center.md). Run `/start-session` at the
 beginning of a session and `/log-session` at the end.
 
+**All documentation is in the numbered folders** (`00 Start Here/` … `05 Technical/`). There is no
+`docs/` directory. This file, `README.md`, `experiments/experiment_log.md` and
+`reports/phase1_writeup_template.md` sit outside them only because tooling pins them there. When
+adding documentation, put it in a numbered folder and link to it — never restate an existing note.
+
 > **Current phase: Phase 1 "See" — sub-phase 1a (scaffold) complete and audited, 1b (clip
 > selection) next.** The stack is proven: `make smoke-detect` loads real weights and runs inference
 > end to end. But **no dataset has been downloaded and no clip annotated** — the only frames ever
@@ -55,7 +60,7 @@ The running log is **`experiments/experiment_log.md` and nowhere else.** Do not 
 
 ## Architecture
 
-Full detail: [architecture](docs/architecture.md). The rules that constrain edits:
+Full detail: [architecture](05%20Technical/architecture.md). The rules that constrain edits:
 
 1. **Foundation modules import nothing from the project.** `types.py`, `config.py`, `paths.py` are leaves.
 2. **Stage modules never import each other.** `tracking/` consumes `Detection` from `types.py`, not `inference/`.
@@ -125,7 +130,7 @@ adds the onboarding, reading, check-in and verified-reference layer; it does not
 
 ## Licensing
 
-Three separate licences — [licensing](docs/licensing.md).
+Three separate licences — [licensing](05%20Technical/licensing.md).
 
 - **Code: no licence chosen.** No `LICENSE` file, so default copyright applies and the repo is
   public under it. **Do not add a LICENSE** unless asked — it has institutional implications.
@@ -140,11 +145,11 @@ species, individuals, or behaviour. Behaviour labels come from the **dataset**, 
 never write documentation or captions implying otherwise.
 
 Verified variants and the two broken upstream defaults:
-[MegaDetector Variants](04%20Reference/MegaDetector%20Variants.md). **Always pass `version=`
+[`05 Technical/model.md`](05%20Technical/model.md). **Always pass `version=`
 explicitly** — both classes' defaults raise `ValueError`.
 
 The nine dataset behaviour labels:
-[PanAf500 Action Labels](04%20Reference/PanAf500%20Action%20Labels.md).
+[`05 Technical/dataset.md`](05%20Technical/dataset.md).
 
 ## Requirements for future changes
 
@@ -152,7 +157,7 @@ The nine dataset behaviour labels:
   downloaded in tests; use a stub detector satisfying the protocol.
 - **Docstrings** on public modules, classes and functions (Google style, Ruff `D`).
 - **Documentation updates** where behaviour changed — including flipping a stage from "not
-  implemented" in the README table, [architecture](docs/architecture.md) and the notebook.
+  implemented" in the README table, [architecture](05%20Technical/architecture.md) and the notebook.
 - **An experiment-log entry** for anything touching data or models, including failures and verbatim
   errors.
 - **`make lock`** if dependencies changed, committing `uv.lock` and `requirements-colab.txt`.
@@ -186,7 +191,7 @@ detector.predictor.args.device = device  # args
 
 Never record the *requested* device in `RunMetadata` — record what
 `runtime.module_device(detector)` reports. `scripts/smoke_detect.py` is the working reference.
-Full detail: [model docs](docs/model.md).
+Full detail: [model docs](05%20Technical/model.md).
 
 ## Smoke tests
 

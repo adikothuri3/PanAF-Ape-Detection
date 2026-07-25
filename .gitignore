@@ -62,7 +62,7 @@ service-account*.json
 
 # --------------------------------------------------------------------------- #
 # Model weights and checkpoints -- never committed. Weights are redistributed
-# under their own licence; see docs/licensing.md.
+# under their own licence; see 05 Technical/licensing.md.
 # --------------------------------------------------------------------------- #
 *.pt
 *.pth
@@ -116,8 +116,8 @@ data/sample_manifest.csv
 *.npy
 *.npz
 # Documentation figures are tracked deliberately, once they exist.
-!docs/**/*.png
-!docs/**/*.svg
+!05 Technical/**/*.png
+!05 Technical/**/*.svg
 
 # Write-up figures. reports/phase1_writeup_template.md asks for a compact figure
 # in reports/figures/ and references it as figures/<name>.png -- without these

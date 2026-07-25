@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         # The documented trap: both classes ship defaults their own validation rejects.
         print(f"\nFAILED: {exc}")
-        print("Valid variant strings are listed in docs/model.md")
+        print("Valid variant strings are listed in 05 Technical/model.md")
         return 1
     except Exception as exc:
         print(f"\nFAILED to load the model: {type(exc).__name__}: {exc}")

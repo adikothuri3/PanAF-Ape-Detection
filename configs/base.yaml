@@ -29,7 +29,7 @@ model:
   framework: pytorch-wildlife
   model_name: MegaDetectorV6
   # The exact weight variant is recorded with every run. Do not remove it or
-  # rely on an upstream default. See docs/model.md for the recognised set.
+  # rely on an upstream default. See 05 Technical/model.md for the recognised set.
   variant: MDV6-yolov9-c
   confidence_threshold: 0.2
   # auto | cpu | cuda | mps
@@ -37,7 +37,7 @@ model:
 
 tracking:
   # Not implemented yet. The backend is chosen after the detection baseline
-  # is working; see docs/architecture.md.
+  # is working; see 05 Technical/architecture.md.
   enabled: false
   backend: none
   minimum_track_length: 5

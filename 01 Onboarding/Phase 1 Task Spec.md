@@ -24,7 +24,7 @@ is done. Nothing in this repo has produced a detection.
 | 5 | **Compare** | Show the dataset's action label next to your detections. **Does what you see match the label?** | ⬜ Not started |
 | 6 | **Write it up** | One page: what worked, what failed (missed detections, ID switches, dark frames), and **three ideas** to make it better. | ⬜ Template ready at [reports/phase1_writeup_template.md](../reports/phase1_writeup_template.md) |
 
-The 9 action labels are listed in [[PanAf500 Action Labels]].
+The 9 action labels are listed in [[dataset|the nine action labels]].
 
 ## Deliverable
 
@@ -38,7 +38,7 @@ The 9 action labels are listed in [[PanAf500 Action Labels]].
 
 This is the acceptance test. It is stricter than "the code runs on my machine", and it is why the
 repo has a locked environment, a checksummed manifest and a
-[reproducibility contract](../docs/reproducibility.md).
+[reproducibility contract](../05%20Technical/reproducibility.md).
 
 ## Stretch
 
@@ -50,11 +50,11 @@ skeletons. That is the on-ramp to Phase 2 — see [[Four Phase Arc]].
 Worth stating because the tooling makes it easy to overclaim:
 
 - MegaDetector outputs `animal` / `person` / `vehicle`. It does **not** identify species,
-  individuals, or behaviour — see [[MegaDetector Variants]] and [model docs](../docs/model.md).
+  individuals, or behaviour — see [[model|MegaDetector variants]] and [model docs](../05%20Technical/model.md).
 - Behaviour labels come from the **dataset**, never from the model. Step 5 is a *comparison*, not a
   prediction task.
 - No fine-tuning. Phase 1 is pretrained inference only.
 
 ## Related
 
-[[Four Phase Arc]] · [[How We Work]] · [[PanAf500 Action Labels]] · [[Reading List]] · [[PanAf Command Center]]
+[[Four Phase Arc]] · [[How We Work]] · [[dataset|the nine action labels]] · [[Reading List]] · [[PanAf Command Center]]

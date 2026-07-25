@@ -143,7 +143,8 @@ class RepositoryPaths:
         interim_data_dir: Derived-but-reusable data such as extracted frames.
         processed_data_dir: Analysis-ready derived data.
         artifacts_dir: Generated run outputs; ignored by git in its entirety.
-        docs_dir: Project documentation.
+        docs_dir: Project documentation. All notes live in the numbered
+            vault folders; this is the technical set.
         experiments_dir: Research log and experiment notes.
         reports_dir: Write-ups and figures.
     """
@@ -183,7 +184,7 @@ class RepositoryPaths:
             interim_data_dir=data / "interim",
             processed_data_dir=data / "processed",
             artifacts_dir=base / "artifacts",
-            docs_dir=base / "docs",
+            docs_dir=base / "05 Technical",
             experiments_dir=base / "experiments",
             reports_dir=base / "reports",
         )
@@ -218,7 +219,7 @@ class RepositoryPaths:
             interim_data_dir=resolve_under_root(paths_config.interim_data_dir, base),
             processed_data_dir=resolve_under_root(paths_config.processed_data_dir, base),
             artifacts_dir=resolve_under_root(paths_config.artifacts_dir, base),
-            docs_dir=base / "docs",
+            docs_dir=base / "05 Technical",
             experiments_dir=base / "experiments",
             reports_dir=base / "reports",
         )

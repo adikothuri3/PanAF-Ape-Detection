@@ -92,7 +92,7 @@ underneath every stage rather than inside one.
 | Video export | Not implemented | `src/panaf_ape_detection/visualization/` |
 | Qualitative evaluation | Not implemented | `src/panaf_ape_detection/evaluation/` |
 
-See [`docs/architecture.md`](docs/architecture.md) for the intended module boundaries.
+See [`05 Technical/architecture.md`](05%20Technical/architecture.md) for the intended module boundaries.
 
 ## Quick start
 
@@ -213,10 +213,10 @@ until the exact endpoint and terms have been verified.
 
 ## Repository layout
 
-The repository root doubles as an **Obsidian vault** — the numbered folders below are notes, and
-`docs/`, `experiments/` and `reports/` are part of the same vault rather than a parallel copy of it.
-Open the repository root with *Open folder as vault* to use it; everything is plain Markdown and
-reads fine without Obsidian.
+The repository root doubles as an **Obsidian vault**. **All documentation lives in the numbered
+folders below** — there is no separate `docs/` directory. Open the repository root with *Open folder
+as vault* to browse it with backlinks and graph view; everything is plain Markdown and reads fine
+without Obsidian.
 
 ```text
 .
@@ -224,16 +224,16 @@ reads fine without Obsidian.
 ├── 01 Onboarding/      Project context, four-phase arc, Phase 1 spec, working practice
 ├── 02 Reading/         The onboarding reading list, one note per item
 ├── 03 Check-ins/       Weekly check-in template and notes
-├── 04 Reference/       Verified facts: behaviour labels, detector variants, glossary
+├── 04 Reference/       Glossary
+├── 05 Technical/       Architecture, dataset, model, licensing, reproducibility
 ├── .github/            CI, Dependabot, issue and PR templates
 ├── .claude/            Claude Code hook and session skills
 ├── configs/            Versioned YAML configurations (base, colab)
-├── data/               Dataset tree — contents git-ignored, docs and examples tracked
+├── data/               Dataset tree — contents git-ignored, README and example tracked
 │   ├── raw/            Immutable, as-obtained dataset files
 │   ├── interim/        Derived intermediates (extracted frames)
 │   └── processed/      Analysis-ready derived data
-├── docs/               Architecture, dataset, model, licensing, reproducibility
-├── experiments/        Running research log
+├── experiments/        Running research log — the only one
 ├── notebooks/          Colab scaffold (no business logic)
 ├── reports/            Write-up template and figures
 ├── scripts/            Environment and repository checks
@@ -246,13 +246,21 @@ reads fine without Obsidian.
 └── artifacts/          Generated outputs — created on demand, entirely git-ignored
 ```
 
+`README.md`, `CLAUDE.md`, `experiments/experiment_log.md` and
+`reports/phase1_writeup_template.md` sit outside the numbered folders because tooling pins them
+there — the wheel build, Claude Code, and `make verify` respectively — not because they are a second
+documentation system. The small `README.md` files in `data/`, `notebooks/` and `experiments/` are
+directory signposts, rendered by GitHub when you browse that folder.
+
+**One fact, one home.** Anything else links to it rather than restating it.
+
 Generated outputs go to `artifacts/`, which git ignores completely:
 
 ```text
 artifacts/
 ├── detections/       Per-clip detection records
 ├── frames/           Extracted or rendered frames
-├── metadata/         Run metadata (see docs/reproducibility.md)
+├── metadata/         Run metadata (see 05 Technical/reproducibility.md)
 ├── metrics/          Numerical summaries
 ├── videos/           Annotated clips and GIFs
 └── visualizations/   Diagnostic plots and overlays
@@ -282,7 +290,7 @@ than one that does not exist.
 
 ## Reproducibility policy
 
-Summarised here, defined in full in [`docs/reproducibility.md`](docs/reproducibility.md):
+Summarised here, defined in full in [`05 Technical/reproducibility.md`](05%20Technical/reproducibility.md):
 
 1. The environment is locked (`uv.lock`, committed) and the Python version is pinned
    (`.python-version`).
@@ -401,7 +409,7 @@ PanAf20K, the Bristol data deposit, MegaDetector and PyTorch-Wildlife are in
 | MegaDetector V6 weights | Varies **by variant** — the YOLOv9/YOLOv10 variants and the Apache RT-DETR variant differ |
 
 Because no `LICENSE` file exists, default copyright applies to this code and no one has been
-granted rights to reuse it. Read [`docs/licensing.md`](docs/licensing.md) before publishing,
+granted rights to reuse it. Read [`05 Technical/licensing.md`](05%20Technical/licensing.md) before publishing,
 redistributing, or using any of this commercially.
 
 ## Acknowledgements

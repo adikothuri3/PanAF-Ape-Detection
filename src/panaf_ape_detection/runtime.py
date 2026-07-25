@@ -189,7 +189,7 @@ def set_seeds(seed: int) -> None:
     so the call works in the lightweight environment.
 
     Seeding is not the same as determinism: GPU kernels can still produce
-    slightly different results run to run. See ``docs/reproducibility.md``.
+    slightly different results run to run. See ``05 Technical/reproducibility.md``.
 
     Args:
         seed: The seed from ``project.seed``. Must be non-negative.

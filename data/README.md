@@ -73,7 +73,7 @@ confirmed — with a rate limit and a resume, not a `for` loop over `wget`.
 - The annotated clips you produce are derived works of the dataset. Check the licence before
   publishing them anywhere, including in a report, a slide deck, or a GitHub README.
 - The repository code licence does **not** cover the data. See
-  [`../docs/licensing.md`](../docs/licensing.md).
+  [`../05 Technical/licensing.md`](../05%20Technical/licensing.md).
 
 ## Expected local layout
 
@@ -153,7 +153,7 @@ Checksums are what make a result re-runnable rather than merely re-described. Th
 that the file you ran inference over today is the same file you ran it over last month, that a
 collaborator has the same bytes you do, and that a partial or corrupted download did not quietly
 change your results. Once inference is implemented, every run's metadata will embed these digests
-(see [`../docs/reproducibility.md`](../docs/reproducibility.md)).
+(see [`../05 Technical/reproducibility.md`](../05%20Technical/reproducibility.md)).
 
 Verify before a run, not after a surprising result.
 

@@ -102,7 +102,7 @@ Commit the experiment-log entry alongside the code or config it describes.
 
 ## Data handling
 
-Read [`data/README.md`](data/README.md) and [`docs/licensing.md`](docs/licensing.md) before touching
+Read [`data/README.md`](data/README.md) and [`05 Technical/licensing.md`](05%20Technical/licensing.md) before touching
 data.
 
 **Never commit:**

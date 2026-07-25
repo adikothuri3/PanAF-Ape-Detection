@@ -49,7 +49,7 @@ def broken_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
     monkeypatch.setattr(verifier, "_failures", [])
     for name in ("00 Start Here", "01 Onboarding", "02 Reading", "03 Check-ins", "04 Reference"):
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
-    for name in ("docs", "experiments", "reports"):
+    for name in ("experiments", "reports"):
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     yield tmp_path
 
@@ -280,9 +280,9 @@ def test_template_with_placeholders_passes(broken_repo: Path):
 
 
 def test_licence_inconsistency_is_caught(broken_repo: Path):
-    """A LICENSE file while the docs still say none was chosen is a contradiction."""
+    """A LICENSE file while the licensing note still says none was chosen is a contradiction."""
     write(broken_repo / "LICENSE", "MIT License\n")
-    write(broken_repo / "docs" / "licensing.md", "No code licence has been selected.\n")
+    write(broken_repo / "05 Technical" / "licensing.md", "No code licence has been selected.\n")
 
     verifier.check_license_documentation_is_consistent()
 
@@ -290,7 +290,7 @@ def test_licence_inconsistency_is_caught(broken_repo: Path):
 
 
 def test_missing_licence_declaration_is_caught(broken_repo: Path):
-    write(broken_repo / "docs" / "licensing.md", "Everything is MIT.\n")
+    write(broken_repo / "05 Technical" / "licensing.md", "Everything is MIT.\n")
 
     verifier.check_license_documentation_is_consistent()
 

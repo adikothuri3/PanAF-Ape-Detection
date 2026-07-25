@@ -45,6 +45,10 @@ Several of these name exactly the conditions expected to degrade a detector: `cl
 subject filling or exceeding the frame. That makes the label a useful axis for clip selection as
 well as the target of the Phase 1 comparison.
 
+Phase 1 step 5 displays these labels **beside** detections. They are **dataset ground truth, never
+model predictions** — MegaDetector cannot predict behaviour (see [`model.md`](model.md)) — and any
+annotated clip must make that distinction visible to a viewer.
+
 > **The label list is verified. The annotation file format is not.** Those are two different claims
 > and this document must not blur them.
 >

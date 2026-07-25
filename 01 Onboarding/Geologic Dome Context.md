@@ -48,7 +48,7 @@ Check-in expectations are in [[How We Work]]; the check-in notes live in `03 Che
 The IUCN lists **every great ape species as Endangered or Critically Endangered**, and the PanAf
 footage is real field data from conservation sites. The ethical constraints that follow — location
 sensitivity, not overstating what a detector can do — are recorded in
-[dataset docs](../docs/dataset.md) and [licensing](../docs/licensing.md).
+[dataset docs](../05%20Technical/dataset.md) and [licensing](../05%20Technical/licensing.md).
 
 Note the terminology the onboarding is explicit about: these are **great apes, not monkeys**.
 

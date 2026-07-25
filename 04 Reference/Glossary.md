@@ -19,7 +19,7 @@ Endangered.
 14 African field sites.
 
 **PanAf500** — the densely annotated 500-video subset with per-frame boxes, identity tracks and
-behaviour labels. **The only subset Phase 1 uses.** See [[PanAf500 Action Labels]].
+behaviour labels. **The only subset Phase 1 uses.** See [[dataset|the nine action labels]].
 
 **Camera trap** — a fixed camera triggered by motion. It records whatever passes, so some clips
 contain no animal at all — which is what makes false-positive behaviour measurable.
@@ -29,7 +29,7 @@ contain no animal at all — which is what makes false-positive behaviour measur
 ## Detection and tracking
 
 **MegaDetector** — a general animal/person/vehicle detector for camera-trap imagery. Not a species
-classifier. See [[MegaDetector Variants]].
+classifier. See [[model|MegaDetector variants]].
 
 **Confidence threshold** — the score above which a detection is kept. Trades recall against
 precision continuously; a detection count is meaningless without it.
@@ -76,8 +76,8 @@ conservation analogue is [[SPARROW]].
 from this repo.
 
 **Run metadata** — the record written alongside every run: commit, config, variant, threshold, seed,
-input checksums. See [reproducibility docs](../docs/reproducibility.md).
+input checksums. See [reproducibility docs](../05%20Technical/reproducibility.md).
 
 ## Related
 
-[[Geologic Dome Context]] · [[Four Phase Arc]] · [[MegaDetector Variants]] · [[Reading List]]
+[[Geologic Dome Context]] · [[Four Phase Arc]] · [[model|MegaDetector variants]] · [[Reading List]]

@@ -47,11 +47,11 @@ REQUIRED_FILES: tuple[str, ...] = (
     "configs/colab.yaml",
     "data/README.md",
     "data/sample_manifest.example.csv",
-    "docs/architecture.md",
-    "docs/dataset.md",
-    "docs/licensing.md",
-    "docs/model.md",
-    "docs/reproducibility.md",
+    "05 Technical/architecture.md",
+    "05 Technical/dataset.md",
+    "05 Technical/licensing.md",
+    "05 Technical/model.md",
+    "05 Technical/reproducibility.md",
     "experiments/README.md",
     "experiments/experiment_log.md",
     "notebooks/README.md",
@@ -95,8 +95,6 @@ REQUIRED_FILES: tuple[str, ...] = (
     "01 Onboarding/How We Work.md",
     "02 Reading/Reading List.md",
     "03 Check-ins/Check-in Template.md",
-    "04 Reference/PanAf500 Action Labels.md",
-    "04 Reference/MegaDetector Variants.md",
     "04 Reference/Glossary.md",
 )
 
@@ -105,7 +103,6 @@ REQUIRED_DIRECTORIES: tuple[str, ...] = (
     "data/interim",
     "data/processed",
     "data/raw",
-    "docs",
     "experiments",
     "notebooks",
     "reports/figures",
@@ -117,16 +114,19 @@ REQUIRED_DIRECTORIES: tuple[str, ...] = (
     "02 Reading",
     "03 Check-ins",
     "04 Reference",
+    "05 Technical",
 )
 
-# Numbered note folders that make up the added vault layer. `docs/`, `experiments/`
-# and `reports/` are part of the same vault but predate it and are checked elsewhere.
+# The numbered note folders. All project documentation lives here; `experiments/`
+# and `reports/` hold the running log and the write-up, which are pinned to those
+# paths by tooling and are checked separately.
 VAULT_DIRECTORIES: tuple[str, ...] = (
     "00 Start Here",
     "01 Onboarding",
     "02 Reading",
     "03 Check-ins",
     "04 Reference",
+    "05 Technical",
 )
 
 # Allowed `status:` values for a note in `02 Reading/`.
@@ -209,7 +209,7 @@ def check_required_paths() -> None:
 
 
 def check_license_documentation_is_consistent() -> None:
-    """The presence of a LICENSE file must agree with docs/licensing.md.
+    """The presence of a LICENSE file must agree with 05 Technical/licensing.md.
 
     Adding a LICENSE without updating the documentation (or vice versa) leaves
     the repository making two contradictory claims about reuse rights.
@@ -217,7 +217,8 @@ def check_license_documentation_is_consistent() -> None:
     license_present = any(
         (REPO_ROOT / name).is_file() for name in ("LICENSE", "LICENSE.md", "LICENSE.txt")
     )
-    licensing_doc = (REPO_ROOT / "docs" / "licensing.md").read_text(encoding="utf-8").lower()
+    licensing_path = REPO_ROOT / "05 Technical" / "licensing.md"
+    licensing_doc = licensing_path.read_text(encoding="utf-8").lower()
     declares_unselected = (
         "no code licence has been selected" in licensing_doc
         or "no code license has been selected" in licensing_doc
@@ -225,13 +226,13 @@ def check_license_documentation_is_consistent() -> None:
 
     if not license_present and not declares_unselected:
         fail(
-            "no LICENSE file exists, but docs/licensing.md no longer states that the code "
-            "licence is unselected. Keep the two consistent."
+            "no LICENSE file exists, but 05 Technical/licensing.md no longer states that "
+            "the code licence is unselected. Keep the two consistent."
         )
     if license_present and declares_unselected:
         fail(
-            "a LICENSE file exists, but docs/licensing.md still says no code licence has been "
-            "selected. Update docs/licensing.md, CITATION.cff and the README licensing table."
+            "a LICENSE file exists, but 05 Technical/licensing.md still says no code licence "
+            "has been selected. Update that note, CITATION.cff and the README licensing table."
         )
 
 
@@ -439,7 +440,7 @@ def check_colab_requirements_derived_from_lock() -> None:
 def _markdown_notes() -> list[Path]:
     """Return every Markdown file Obsidian treats as a note in this vault."""
     notes: list[Path] = []
-    for directory in (*VAULT_DIRECTORIES, "docs", "experiments", "reports"):
+    for directory in (*VAULT_DIRECTORIES, "experiments", "reports"):
         notes.extend(sorted((REPO_ROOT / directory).rglob("*.md")))
     notes.extend(
         REPO_ROOT / name
@@ -478,7 +479,7 @@ def check_wikilinks_resolve() -> None:
             target = match.group(1).strip()
             if not target:
                 continue
-            # A link may name a path (`docs/model`) or just the note stem.
+            # A link may name a path (`05 Technical/model`) or just the note stem.
             stem = Path(target).stem
             if stem not in note_names:
                 fail(f"{relative}: wikilink [[{target}]] does not resolve to any note")
