@@ -362,7 +362,7 @@ pydantic==2.13.4
     #   fastapi
     #   gradio
     #   panaf-ape-detection
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 pydub==0.25.1
     # via gradio
