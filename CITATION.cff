@@ -17,6 +17,7 @@ abstract: >-
 type: software
 version: 0.1.0
 date-released: "2026-07-24"
+repository-code: "https://github.com/adikothuri3/PanAF-Ape-Detection"
 
 # Add collaborators by appending entries to this list. Order is authorship order.
 # Optional fields per author: email, affiliation, orcid.

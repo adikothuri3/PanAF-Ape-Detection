@@ -105,8 +105,8 @@ Enough to run the CLI, the tests and every quality check. Downloads no model wei
 GPU. This is what CI installs.
 
 ```bash
-git clone <your-fork-url> panaf-ape-detection
-cd panaf-ape-detection
+git clone https://github.com/adikothuri3/PanAF-Ape-Detection.git
+cd PanAF-Ape-Detection
 uv sync
 uv run panaf-phase1 doctor
 uv run panaf-phase1 validate-config --config configs/base.yaml

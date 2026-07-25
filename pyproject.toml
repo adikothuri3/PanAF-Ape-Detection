@@ -61,8 +61,9 @@ inference = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/adiKothuri/panaf-ape-detection"
-Documentation = "https://github.com/adiKothuri/panaf-ape-detection/tree/main/docs"
+Homepage = "https://github.com/adikothuri3/PanAF-Ape-Detection"
+Documentation = "https://github.com/adikothuri3/PanAF-Ape-Detection/tree/main/docs"
+Issues = "https://github.com/adikothuri3/PanAF-Ape-Detection/issues"
 
 [project.scripts]
 panaf-phase1 = "panaf_ape_detection.cli:app"
