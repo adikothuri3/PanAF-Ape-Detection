@@ -187,11 +187,37 @@ jobs:
         # an OpenCV/imageio video round-trip.
         run: uv run python scripts/smoke_inference.py
 
-      - name: Confirm no weights were downloaded
+      - name: Confirm no model weights were downloaded
+        # Scoped deliberately. A naive `find . -name '*.pth'` is a false positive
+        # machine: `.pth` is also Python's *path-configuration* extension
+        # (_virtualenv.pth, editable installs), and torchmetrics legitimately
+        # ships LPIPS weights inside its own package. Check the two places
+        # MegaDetector weights would actually land instead.
         run: |
-          if find . -name '*.pt' -o -name '*.pth' | grep -q .; then
-            echo "::error::Model weights appeared in the workspace; CI must not download them."
-            find . -name '*.pt' -o -name '*.pth'
-            exit 1
+          status=0
+
+          # 1. Any MDV6 weight file anywhere.
+          if find / -name 'MDV6*' -not -path '*/proc/*' 2>/dev/null | grep -q .; then
+            echo "::error::MegaDetector weights were downloaded; CI must not download them."
+            find / -name 'MDV6*' -not -path '*/proc/*' 2>/dev/null
+            status=1
           fi
-          echo "No weight files present, as expected."
+
+          # 2. Any weight file inside the repository tree itself, excluding the venv.
+          if find . -path ./.venv -prune -o \( -name '*.pt' -o -name '*.pth' \) -print \
+               | grep -q .; then
+            echo "::error::Weight files appeared in the repository tree."
+            find . -path ./.venv -prune -o \( -name '*.pt' -o -name '*.pth' \) -print
+            status=1
+          fi
+
+          # 3. The torch hub cache, which is where PyTorch-Wildlife puts them.
+          hub="${TORCH_HOME:-$HOME/.cache/torch}/hub/checkpoints"
+          if [ -d "$hub" ] && [ -n "$(ls -A "$hub" 2>/dev/null)" ]; then
+            echo "::error::torch hub checkpoint cache is not empty: $hub"
+            ls -la "$hub"
+            status=1
+          fi
+
+          [ "$status" -eq 0 ] && echo "No model weights present, as expected."
+          exit "$status"
