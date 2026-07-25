@@ -191,6 +191,16 @@ Thumbs.db
 desktop.ini
 
 # --------------------------------------------------------------------------- #
+# Obsidian
+# The repository root doubles as an Obsidian vault. Vault config is tracked so
+# the layout is shared; only per-machine UI state is ignored.
+# --------------------------------------------------------------------------- #
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.trash/
+
+# --------------------------------------------------------------------------- #
 # Explicitly tracked, in case a broad rule above ever matches them.
 # uv.lock in particular MUST be committed -- it is the reproducibility contract.
 # --------------------------------------------------------------------------- #
@@ -199,3 +209,13 @@ desktop.ini
 !requirements-colab.txt
 !reports/**/*.md
 !configs/*.yaml
+
+# Vault note attachments. Without these, the blanket image rules above would
+# silently swallow any screenshot pasted into a note -- with no error, which is
+# the worst way to lose a figure.
+!04 Reference/attachments/**
+!04 Reference/attachments/*.png
+!04 Reference/attachments/*.jpg
+!04 Reference/attachments/*.jpeg
+!04 Reference/attachments/*.gif
+!04 Reference/attachments/*.svg

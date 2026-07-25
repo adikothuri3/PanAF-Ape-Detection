@@ -26,18 +26,34 @@ annotated per frame with
 - identity tracks linking the same ape across frames within a video,
 - frame-wise behavioural action labels.
 
-The paper describes nine behavioural action classes. This project reads whatever labels the
-distributed annotation files actually contain and displays them; it does not assume a class list.
-
 **PanAf500 is the only subset Phase 1 uses**, because it is the only one carrying the per-frame
 boxes and behaviour labels that this phase needs in order to judge detections and caption them.
 
-> **A note on annotation formats.** The precise file format, field names, coordinate convention and
-> label vocabulary of the annotation files are **deliberately not documented here.** They have not
-> been verified against the actual deposit files. Write them down in this section only after you
-> have opened the real files or read the deposit's own documentation, and record which you used.
-> Guessing a schema and then coding against the guess is how a pipeline silently produces
-> plausible, wrong output.
+### The nine behaviour labels
+
+PanAf500 carries **nine action labels**, listed here verbatim from the project's onboarding
+documentation:
+
+| | | |
+| --- | --- | --- |
+| sitting | standing | walking |
+| running | climbing up | climbing down |
+| hanging | sitting on back | camera interaction |
+
+Several of these name exactly the conditions expected to degrade a detector: `climbing up` /
+`climbing down` and `hanging` imply occlusion and unusual poses, and `camera interaction` means a
+subject filling or exceeding the frame. That makes the label a useful axis for clip selection as
+well as the target of the Phase 1 comparison.
+
+> **The label list is verified. The annotation file format is not.** Those are two different claims
+> and this document must not blur them.
+>
+> Still unverified, and not to be guessed: which file holds these labels, whether they are recorded
+> per frame or per track, the exact strings used on disk (`climbing up` vs `climbing_up` vs an
+> integer id), the coordinate convention of the boxes, and how simultaneous behaviours are
+> represented. Write those down here only after opening the real files or reading the deposit's own
+> documentation, and record which you used. Guessing a schema and then coding against the guess is
+> how a pipeline silently produces plausible, wrong output.
 
 ## Annotations relevant to this project
 
@@ -66,6 +82,7 @@ chosen to span the conditions expected to break a detector:
 | Motion | Static or slow **and** fast movement with blur |
 | Occlusion | Clear view **and** heavy vegetation |
 | Species | Both chimpanzee and gorilla footage, if available |
+| Behaviour | Beyond `sitting`/`standing`, at least one clip labelled `climbing up`/`climbing down`, `hanging`, or `camera interaction` |
 | Negative case | At least one clip where apes are absent or barely visible |
 
 That last row is easy to skip and worth keeping. A detector's false-positive behaviour is invisible

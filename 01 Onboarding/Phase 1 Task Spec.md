@@ -1,0 +1,60 @@
+---
+tags: [onboarding, phase-1, task-spec]
+status: active
+source: Geologic Dome Intern Onboarding.pdf (July 2026)
+updated: 2026-07-24
+---
+
+# Phase 1 Task Spec — "See"
+
+**Goal.** Run detection and tracking on real PanAf footage, overlay the behaviour labels, and write
+up what you find.
+
+## The six steps
+
+Status below reflects **what actually exists in this repository**, not what is planned. Only step 1
+is done. Nothing in this repo has produced a detection.
+
+| # | Step | What it asks for | Status |
+|---|---|---|---|
+| 1 | **Set up** | GitHub account; Python via uv or conda; VS Code or Cursor. No personal GPU needed — use Google Colab's free GPU for model work. | ✅ **Done** — uv + Python 3.11, locked env, [repo published](https://github.com/adikothuri3/PanAF-Ape-Detection), [Colab scaffold](../notebooks/README.md) |
+| 2 | **Get the data** | Download a small slice of **PanAf500**: frame-by-frame boxes, individual IDs, species, and 9 action labels. Start with **5 to 10 clips**, not all 7 million frames. | ⬜ Not started — see [data/README.md](../data/README.md) |
+| 3 | **Detect** | Run PyTorch-Wildlife (MegaDetector) on the clips, draw boxes on each frame, stitch back into an annotated video. | ⬜ Not started |
+| 4 | **Track** | Give each ape a stable ID across frames with a simple tracker — **SORT or ByteTrack**. | ⬜ Not started — backend undecided by design |
+| 5 | **Compare** | Show the dataset's action label next to your detections. **Does what you see match the label?** | ⬜ Not started |
+| 6 | **Write it up** | One page: what worked, what failed (missed detections, ID switches, dark frames), and **three ideas** to make it better. | ⬜ Template ready at [reports/phase1_writeup_template.md](../reports/phase1_writeup_template.md) |
+
+The 9 action labels are listed in [[PanAf500 Action Labels]].
+
+## Deliverable
+
+1. A **GitHub repo** — code plus a README.
+2. **2 to 3 annotated clips or GIFs.**
+3. The **one-page write-up**.
+
+## Done means
+
+> Someone else can clone your repo, follow the README, and reproduce one annotated clip.
+
+This is the acceptance test. It is stricter than "the code runs on my machine", and it is why the
+repo has a locked environment, a checksummed manifest and a
+[reproducibility contract](../docs/reproducibility.md).
+
+## Stretch
+
+If the above is solid, run an **animal pose model (DeepLabCut or ViTPose) on one clip** to get
+skeletons. That is the on-ramp to Phase 2 — see [[Four Phase Arc]].
+
+## What this phase is not
+
+Worth stating because the tooling makes it easy to overclaim:
+
+- MegaDetector outputs `animal` / `person` / `vehicle`. It does **not** identify species,
+  individuals, or behaviour — see [[MegaDetector Variants]] and [model docs](../docs/model.md).
+- Behaviour labels come from the **dataset**, never from the model. Step 5 is a *comparison*, not a
+  prediction task.
+- No fine-tuning. Phase 1 is pretrained inference only.
+
+## Related
+
+[[Four Phase Arc]] · [[How We Work]] · [[PanAf500 Action Labels]] · [[Reading List]] · [[PanAf Command Center]]

@@ -1,0 +1,22 @@
+{
+  "attachmentFolderPath": "04 Reference/attachments",
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "alwaysUpdateLinks": true,
+  "showUnsupportedFiles": false,
+  "userIgnoreFilters": [
+    "src/",
+    "tests/",
+    "scripts/",
+    "configs/",
+    "notebooks/",
+    "data/",
+    "artifacts/",
+    ".github/",
+    ".venv/",
+    ".claude/",
+    ".ruff_cache/",
+    ".mypy_cache/",
+    ".pytest_cache/"
+  ]
+}

@@ -15,6 +15,7 @@ printed with enough context to act on.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -67,6 +68,25 @@ REQUIRED_FILES: tuple[str, ...] = (
     "tests/test_cli.py",
     "tests/test_config.py",
     "tests/test_paths.py",
+    # Claude Code integration
+    ".claude/settings.json",
+    ".claude/hooks/ruff-check.sh",
+    ".claude/skills/start-session/SKILL.md",
+    ".claude/skills/log-session/SKILL.md",
+    ".claude/skills/finish-phase/SKILL.md",
+    # Obsidian vault -- the repository root doubles as the vault
+    ".obsidian/app.json",
+    ".obsidian/core-plugins.json",
+    "00 Start Here/PanAf Command Center.md",
+    "01 Onboarding/Geologic Dome Context.md",
+    "01 Onboarding/Four Phase Arc.md",
+    "01 Onboarding/Phase 1 Task Spec.md",
+    "01 Onboarding/How We Work.md",
+    "02 Reading/Reading List.md",
+    "03 Check-ins/Check-in Template.md",
+    "04 Reference/PanAf500 Action Labels.md",
+    "04 Reference/MegaDetector Variants.md",
+    "04 Reference/Glossary.md",
 )
 
 REQUIRED_DIRECTORIES: tuple[str, ...] = (
@@ -81,7 +101,25 @@ REQUIRED_DIRECTORIES: tuple[str, ...] = (
     "scripts",
     "src/panaf_ape_detection",
     "tests",
+    "00 Start Here",
+    "01 Onboarding",
+    "02 Reading",
+    "03 Check-ins",
+    "04 Reference",
 )
+
+# Numbered note folders that make up the added vault layer. `docs/`, `experiments/`
+# and `reports/` are part of the same vault but predate it and are checked elsewhere.
+VAULT_DIRECTORIES: tuple[str, ...] = (
+    "00 Start Here",
+    "01 Onboarding",
+    "02 Reading",
+    "03 Check-ins",
+    "04 Reference",
+)
+
+# Allowed `status:` values for a note in `02 Reading/`.
+READING_STATUSES: frozenset[str] = frozenset({"not-started", "in-progress", "done"})
 
 # Extensions that must never be tracked by git, whatever the directory.
 FORBIDDEN_TRACKED_SUFFIXES: frozenset[str] = frozenset(
@@ -389,6 +427,111 @@ def check_colab_requirements_derived_from_lock() -> None:
         fail("requirements-colab.txt does not pin pytorchwildlife; regenerate it from uv.lock")
 
 
+def _markdown_notes() -> list[Path]:
+    """Return every Markdown file Obsidian treats as a note in this vault."""
+    notes: list[Path] = []
+    for directory in (*VAULT_DIRECTORIES, "docs", "experiments", "reports"):
+        notes.extend(sorted((REPO_ROOT / directory).rglob("*.md")))
+    notes.extend(
+        REPO_ROOT / name
+        for name in ("README.md", "CLAUDE.md", "CONTRIBUTING.md")
+        if (REPO_ROOT / name).is_file()
+    )
+    return notes
+
+
+def check_wikilinks_resolve() -> None:
+    """Every ``[[wikilink]]`` points at a note that exists.
+
+    Broken links are how a vault rots: Obsidian shows them as a slightly different
+    colour and nothing else complains, so they accumulate silently. This is the
+    highest-value vault check.
+    """
+    note_names = {path.stem for path in _markdown_notes()}
+    # Obsidian also resolves links to any Markdown file in the vault, not just the
+    # curated folders above -- include everything outside ignored directories.
+    for path in REPO_ROOT.rglob("*.md"):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        if relative.startswith((".venv/", "node_modules/", "artifacts/", ".claude/")):
+            continue
+        note_names.add(path.stem)
+
+    pattern = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+    for note in _markdown_notes():
+        relative = note.relative_to(REPO_ROOT).as_posix()
+        text = note.read_text(encoding="utf-8")
+        # Skip fenced code blocks (templates embed example wikilinks not meant to
+        # resolve until copied) and inline code spans (prose *about* wikilinks,
+        # e.g. "fails on a broken `[[wikilink]]`", is not a link).
+        prose = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+        prose = re.sub(r"`[^`\n]*`", "", prose)
+        for match in pattern.finditer(prose):
+            target = match.group(1).strip()
+            if not target:
+                continue
+            # A link may name a path (`docs/model`) or just the note stem.
+            stem = Path(target).stem
+            if stem not in note_names:
+                fail(f"{relative}: wikilink [[{target}]] does not resolve to any note")
+
+
+def check_reading_notes_have_status() -> None:
+    """Every note in `02 Reading/` declares a known `status:` in its frontmatter."""
+    reading_dir = REPO_ROOT / "02 Reading"
+    notes = [p for p in sorted(reading_dir.glob("*.md")) if p.name != "Reading List.md"]
+    if not notes:
+        fail("02 Reading/ contains no reading notes")
+
+    for note in notes:
+        relative = note.relative_to(REPO_ROOT).as_posix()
+        text = note.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            fail(f"{relative}: missing YAML frontmatter")
+            continue
+        match = re.search(r"^status:\s*(\S+)\s*$", text, re.MULTILINE)
+        if match is None:
+            fail(f"{relative}: frontmatter has no `status:` field")
+            continue
+        status = match.group(1).strip().strip("\"'")
+        if status not in READING_STATUSES:
+            valid = ", ".join(sorted(READING_STATUSES))
+            fail(f"{relative}: status {status!r} is not one of: {valid}")
+
+
+def check_vault_local_state_not_tracked() -> None:
+    """Per-machine Obsidian UI state must not be committed."""
+    if not _in_git_repository():
+        print("  (skipped: not a git repository yet)")
+        return
+
+    tracked = set(_git("ls-files"))
+    for local_only in (".obsidian/workspace.json", ".obsidian/workspace-mobile.json"):
+        if local_only in tracked:
+            fail(f"{local_only} is tracked; it is per-machine UI state and should be git-ignored")
+
+
+def check_no_second_research_log() -> None:
+    """There is exactly one running research log.
+
+    The onboarding asks for *one* running doc. A second log in the vault would
+    split the record and neither half would be trustworthy.
+    """
+    canonical = REPO_ROOT / "experiments" / "experiment_log.md"
+    if not canonical.is_file():
+        fail("experiments/experiment_log.md is missing; it is the single running research log")
+        return
+
+    for directory in VAULT_DIRECTORIES:
+        for note in (REPO_ROOT / directory).rglob("*.md"):
+            stem = note.stem.lower()
+            if "experiment log" in stem or "experiment_log" in stem or stem.endswith("session log"):
+                relative = note.relative_to(REPO_ROOT).as_posix()
+                fail(
+                    f"{relative} looks like a second research log. There is exactly one, at "
+                    "experiments/experiment_log.md -- link to it instead."
+                )
+
+
 def check_no_fabricated_results() -> None:
     """Report templates must not have been pre-filled with invented findings."""
     template = REPO_ROOT / "reports" / "phase1_writeup_template.md"
@@ -424,6 +567,10 @@ CHECKS: tuple[tuple[str, str, Callable[[], None]], ...] = (
         check_colab_requirements_derived_from_lock,
     ),
     ("honesty", "no fabricated results in templates", check_no_fabricated_results),
+    ("vault", "wikilinks resolve to real notes", check_wikilinks_resolve),
+    ("vault", "reading notes declare a known status", check_reading_notes_have_status),
+    ("vault", "Obsidian local UI state is not tracked", check_vault_local_state_not_tracked),
+    ("vault", "there is exactly one research log", check_no_second_research_log),
 )
 
 GROUPS: tuple[str, ...] = tuple(dict.fromkeys(group for group, _, _ in CHECKS))

@@ -131,6 +131,23 @@ The last row is the one that matters most for Phase 1d: a tracker cannot fix det
 exist. If scores oscillate around `0.2`, lowering the threshold may help tracking more than any
 tracker tuning will.
 
+## The tracker choice (Phase 1d)
+
+The project brief names two options: **SORT** or **ByteTrack**. The choice is between those two and
+is deliberately deferred until the detection baseline exists, because the evidence that should decide
+it — how stable detections actually are frame to frame — is exactly what Phase 1c produces.
+
+Two things worth knowing in advance:
+
+- **ByteTrack is already reachable.** `supervision` ships it and arrives as a PyTorch-Wildlife
+  dependency, so choosing it adds no new dependency. SORT would.
+- **ByteTrack's design targets this failure mode.** It associates low-confidence boxes in a second
+  pass rather than discarding them, which is aimed squarely at detections that flicker around the
+  threshold. If Phase 1c shows that flicker dominates, that is an argument for ByteTrack; if
+  detections turn out to be stable and the problem is elsewhere, SORT's simplicity is worth more.
+
+Whichever is chosen, record the reason in the experiment log. "It was the default" is not a reason.
+
 ## Future work: comparing variants
 
 Before any fine-tuning is considered, the cheap experiment is a variant sweep — run the same clips

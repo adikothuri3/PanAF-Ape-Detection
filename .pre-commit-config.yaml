@@ -73,3 +73,12 @@ repos:
         types: [jupyter]
         pass_filenames: false
         entry: python3 scripts/verify_repository.py --only notebooks
+
+      # The repository root doubles as an Obsidian vault. A broken [[wikilink]] is
+      # invisible in Obsidian and in review, so it is caught here instead.
+      - id: vault-integrity
+        name: vault wikilinks resolve and notes are well-formed
+        language: system
+        types: [markdown]
+        pass_filenames: false
+        entry: python3 scripts/verify_repository.py --only vault

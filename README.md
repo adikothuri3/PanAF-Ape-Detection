@@ -20,6 +20,9 @@ What does **not** exist yet: frame extraction, MegaDetector inference, tracking,
 overlay, and video export. No detections have been produced by this repository. No results,
 metrics, or figures in this repository are real, because none have been generated.
 
+Current task, reading progress and the deliverable checklist are tracked in
+[`00 Start Here/PanAf Command Center.md`](00%20Start%20Here/PanAf%20Command%20Center.md).
+
 ## Phase 1 research question
 
 > Without any fine-tuning, how reliably does pretrained MegaDetector V6 localise great apes in
@@ -210,9 +213,20 @@ until the exact endpoint and terms have been verified.
 
 ## Repository layout
 
+The repository root doubles as an **Obsidian vault** — the numbered folders below are notes, and
+`docs/`, `experiments/` and `reports/` are part of the same vault rather than a parallel copy of it.
+Open the repository root with *Open folder as vault* to use it; everything is plain Markdown and
+reads fine without Obsidian.
+
 ```text
 .
+├── 00 Start Here/      PanAf Command Center — the entry point, start here
+├── 01 Onboarding/      Project context, four-phase arc, Phase 1 spec, working practice
+├── 02 Reading/         The onboarding reading list, one note per item
+├── 03 Check-ins/       Weekly check-in template and notes
+├── 04 Reference/       Verified facts: behaviour labels, detector variants, glossary
 ├── .github/            CI, Dependabot, issue and PR templates
+├── .claude/            Claude Code hook and session skills
 ├── configs/            Versioned YAML configurations (base, colab)
 ├── data/               Dataset tree — contents git-ignored, docs and examples tracked
 │   ├── raw/            Immutable, as-obtained dataset files
@@ -298,11 +312,26 @@ that is silently dropped gets rediscovered later.
 
 ## Phase 1 deliverables
 
+The three things that must exist at the end of Phase 1:
+
+1. **A GitHub repo** — code plus a README.
+2. **2–3 annotated clips or GIFs.**
+3. **A one-page write-up** — what worked, what failed (missed detections, ID switches, dark frames),
+   and three ideas to make it better.
+
+> **Done means:** someone else can clone the repo, follow the README, and reproduce one annotated
+> clip.
+
+That acceptance test is stricter than "it runs on my machine", and it is the reason for the locked
+environment, the checksummed manifest and the [reproducibility policy](#reproducibility-policy).
+
+Working checklist:
+
 - [ ] 5–10 PanAf500 clips selected, justified and recorded in a checksummed manifest.
 - [ ] Frame extraction implemented and tested.
 - [ ] Pretrained MegaDetector V6 inference running over the sample.
-- [ ] A simple tracker integrated, with the backend choice justified.
-- [ ] Dataset behaviour labels displayed beside detections.
+- [ ] A simple tracker integrated (SORT or ByteTrack), with the backend choice justified.
+- [ ] Dataset behaviour labels displayed beside detections, and compared against what is visible.
 - [ ] 2–3 annotated clips or GIFs in `artifacts/videos/`.
 - [ ] A populated research log covering every run, including failures.
 - [ ] A one-page findings write-up from
@@ -327,16 +356,34 @@ that is silently dropped gets rediscovered later.
 
 ## Roadmap
 
-| Phase | Goal | Status |
+This project is **Phase 1 of a four-phase arc**. The phases run:
+
+| Phase | Goal |
+| --- | --- |
+| **1 — See** | Detect and track great apes in wild camera-trap video and read their behaviour, using PanAf20K. **← this repository** |
+| **2 — Pose** | Add a skeleton to each animal, turning movement into joint data — the same representation a robot uses. |
+| **3 — Predict** | Build a small world model that predicts what the animal does next. |
+| **4 — Embody** | Translate that movement onto a Unitree G1 humanoid in MuJoCo simulation with DimensionalOS (dimos). |
+
+Phases 3 and 4 are open research problems — a full next-frame video model is hard, and mapping a
+climbing, four-limbed ape onto a bipedal humanoid (*retargeting*) is harder. They are staged
+deliberately. The job right now is Phase 1, done well.
+
+Phase 1 breaks down as:
+
+| Step | Goal | Status |
 | --- | --- | --- |
 | 1a | Repository scaffold, locked environment, config, CLI | **Done** |
 | 1b | Clip selection + manifest; frame extraction | Next |
 | 1c | Pretrained MegaDetector V6 inference + run metadata | Planned |
-| 1d | Tracker integration (backend chosen from 1c evidence) | Planned |
+| 1d | Tracker integration (SORT or ByteTrack, chosen from 1c evidence) | Planned |
 | 1e | Behaviour-label overlay + annotated clip export | Planned |
 | 1f | Qualitative evaluation + one-page write-up | Planned |
-| 2 | Quantitative evaluation against PanAf500 ground truth | Future |
-| 3 | Variant comparison, and only then fine-tuning if justified | Future |
+| — | **Stretch:** animal pose model (DeepLabCut or ViTPose) on one clip — the on-ramp to Phase 2 | Planned |
+
+**Beyond Phase 1** — worth doing, but rigour *within* this phase rather than phases of the project:
+a quantitative evaluation against PanAf500 ground truth, and a variant comparison before any
+fine-tuning is considered.
 
 ## Citation and licensing
 
