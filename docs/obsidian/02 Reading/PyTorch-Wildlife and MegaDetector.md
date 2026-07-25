@@ -27,7 +27,7 @@ strings, class vocabulary, and two broken upstream defaults are recorded in
 
 - Variant strings, weights, broken defaults → [[model|MegaDetector variants]]
 - What MegaDetector is and is not → [model docs](../05%20Technical/model.md)
-- Install gotchas (undeclared `soundfile`/`librosa`, `setuptools<81`) → [CLAUDE.md](../CLAUDE.md)
+- Install gotchas (undeclared `soundfile`/`librosa`, `setuptools<81`) → [CLAUDE.md](../../../CLAUDE.md)
 
 ## Notes
 

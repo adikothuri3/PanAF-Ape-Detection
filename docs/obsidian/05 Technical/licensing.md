@@ -50,7 +50,7 @@ Key points:
   annotated clips — check the licence before putting them in a public README, a poster, a talk, or
   a paper. "It has boxes drawn on it now" does not make it your footage.
 - Extracted frames are also derived works. Same rules.
-- Cite the dataset (see [`../references.bib`](../references.bib)).
+- Cite the dataset (see [`../../../references.bib`](../../../references.bib)).
 
 If the licence is non-commercial, then commercial use — including use by a company, or work whose
 purpose is a commercial product — is outside it, no matter how the code is licensed.

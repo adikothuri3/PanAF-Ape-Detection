@@ -11,14 +11,14 @@ Orient before touching anything. This is read-only — it changes no files.
 
 ## Steps
 
-1. **Read the Command Center.** `00 Start Here/PanAf Command Center.md` is the single entry point.
+1. **Read the Command Center.** `docs/obsidian/00 Start Here/PanAf Command Center.md` is the single entry point.
    Note Current Status, Current Phase, Current Active Task, Next Recommended Task and Known gaps.
 2. **Check the environment.** Run `uv run panaf-phase1 doctor`. Flag anything the session will
    need and does not have — FFmpeg and the `inference` extra are the usual gaps.
 3. **Check the tree.** `git status --short --branch`. Report uncommitted changes and whether the
    branch is behind `origin/main`. A dirty tree at the start of a session is usually unfinished
    work from the last one — say so rather than building on top of it silently.
-4. **Check reading progress.** Read `02 Reading/Reading List.md` and report which of this week's
+4. **Check reading progress.** Read `docs/obsidian/02 Reading/Reading List.md` and report which of this week's
    four items are still outstanding.
 5. **Report and propose.** Summarise the above in a few lines, then propose the single next action
    and wait for confirmation.
@@ -39,4 +39,4 @@ reading · the one action you propose starting with.
 
 ## Related
 
-`00 Start Here/PanAf Command Center.md` · `01 Onboarding/How We Work.md` · `/log-session` · `/finish-phase`
+`docs/obsidian/00 Start Here/PanAf Command Center.md` · `docs/obsidian/01 Onboarding/How We Work.md` · `/log-session` · `/finish-phase`

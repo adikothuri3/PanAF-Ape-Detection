@@ -27,6 +27,8 @@ import pytest
 from panaf_ape_detection.manifest import MANIFEST_COLUMNS
 from panaf_ape_detection.paths import repository_root
 
+VAULT = "docs/obsidian"
+
 
 def _load_verifier() -> ModuleType:
     """Import `scripts/verify_repository.py` as a module."""
@@ -48,7 +50,7 @@ def broken_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
     monkeypatch.setattr(verifier, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(verifier, "_failures", [])
     for name in ("00 Start Here", "01 Onboarding", "02 Reading", "03 Check-ins", "04 Reference"):
-        (tmp_path / name).mkdir(parents=True, exist_ok=True)
+        (tmp_path / VAULT / name).mkdir(parents=True, exist_ok=True)
     for name in ("experiments", "reports"):
         (tmp_path / name).mkdir(parents=True, exist_ok=True)
     yield tmp_path
@@ -89,7 +91,7 @@ def test_unknown_group_is_rejected():
 
 
 def test_broken_wikilink_is_caught(broken_repo: Path):
-    write(broken_repo / "01 Onboarding" / "Note.md", "See [[No Such Note]] for detail.\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Note.md", "See [[No Such Note]] for detail.\n")
 
     verifier.check_wikilinks_resolve()
 
@@ -97,8 +99,8 @@ def test_broken_wikilink_is_caught(broken_repo: Path):
 
 
 def test_resolving_wikilink_is_accepted(broken_repo: Path):
-    write(broken_repo / "01 Onboarding" / "Target.md", "# Target\n")
-    write(broken_repo / "01 Onboarding" / "Source.md", "See [[Target]].\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Target.md", "# Target\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Source.md", "See [[Target]].\n")
 
     verifier.check_wikilinks_resolve()
 
@@ -106,7 +108,7 @@ def test_resolving_wikilink_is_accepted(broken_repo: Path):
 
 
 def test_wikilink_inside_a_code_fence_is_ignored(broken_repo: Path):
-    write(broken_repo / "01 Onboarding" / "Note.md", "```\n[[Template Placeholder]]\n```\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Note.md", "```\n[[Template Placeholder]]\n```\n")
 
     verifier.check_wikilinks_resolve()
 
@@ -115,7 +117,7 @@ def test_wikilink_inside_a_code_fence_is_ignored(broken_repo: Path):
 
 def test_wikilink_inside_inline_code_is_ignored(broken_repo: Path):
     """Prose *about* wikilinks is not a link, e.g. a sentence quoting `[[wikilink]]` inline."""
-    write(broken_repo / "01 Onboarding" / "Note.md", "fails on a broken `[[wikilink]]`\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Note.md", "fails on a broken `[[wikilink]]`\n")
 
     verifier.check_wikilinks_resolve()
 
@@ -123,8 +125,8 @@ def test_wikilink_inside_inline_code_is_ignored(broken_repo: Path):
 
 
 def test_wikilink_with_an_alias_resolves_on_the_target(broken_repo: Path):
-    write(broken_repo / "01 Onboarding" / "Target.md", "# Target\n")
-    write(broken_repo / "01 Onboarding" / "Source.md", "See [[Target|friendly name]].\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Target.md", "# Target\n")
+    write(broken_repo / VAULT / "01 Onboarding" / "Source.md", "See [[Target|friendly name]].\n")
 
     verifier.check_wikilinks_resolve()
 
@@ -132,8 +134,8 @@ def test_wikilink_with_an_alias_resolves_on_the_target(broken_repo: Path):
 
 
 def test_reading_note_without_status_is_caught(broken_repo: Path):
-    write(broken_repo / "02 Reading" / "Reading List.md", "# index\n")
-    write(broken_repo / "02 Reading" / "Item.md", "---\ntags: [reading]\n---\n\n# Item\n")
+    write(broken_repo / VAULT / "02 Reading" / "Reading List.md", "# index\n")
+    write(broken_repo / VAULT / "02 Reading" / "Item.md", "---\ntags: [reading]\n---\n\n# Item\n")
 
     verifier.check_reading_notes_have_status()
 
@@ -141,8 +143,8 @@ def test_reading_note_without_status_is_caught(broken_repo: Path):
 
 
 def test_reading_note_with_an_unknown_status_is_caught(broken_repo: Path):
-    write(broken_repo / "02 Reading" / "Reading List.md", "# index\n")
-    write(broken_repo / "02 Reading" / "Item.md", "---\nstatus: nearly-done\n---\n")
+    write(broken_repo / VAULT / "02 Reading" / "Reading List.md", "# index\n")
+    write(broken_repo / VAULT / "02 Reading" / "Item.md", "---\nstatus: nearly-done\n---\n")
 
     verifier.check_reading_notes_have_status()
 
@@ -150,8 +152,8 @@ def test_reading_note_with_an_unknown_status_is_caught(broken_repo: Path):
 
 
 def test_reading_note_with_a_known_status_passes(broken_repo: Path):
-    write(broken_repo / "02 Reading" / "Reading List.md", "# index\n")
-    write(broken_repo / "02 Reading" / "Item.md", "---\nstatus: in-progress\n---\n")
+    write(broken_repo / VAULT / "02 Reading" / "Reading List.md", "# index\n")
+    write(broken_repo / VAULT / "02 Reading" / "Item.md", "---\nstatus: in-progress\n---\n")
 
     verifier.check_reading_notes_have_status()
 
@@ -166,7 +168,7 @@ def test_empty_reading_directory_is_caught(broken_repo: Path):
 
 def test_a_second_research_log_is_caught(broken_repo: Path):
     write(broken_repo / "experiments" / "experiment_log.md", "# log\n")
-    write(broken_repo / "03 Check-ins" / "Experiment Log.md", "# a rival log\n")
+    write(broken_repo / VAULT / "03 Check-ins" / "Experiment Log.md", "# a rival log\n")
 
     verifier.check_no_second_research_log()
 
@@ -280,9 +282,12 @@ def test_template_with_placeholders_passes(broken_repo: Path):
 
 
 def test_licence_inconsistency_is_caught(broken_repo: Path):
-    """A LICENSE file while the licensing note still says none was chosen is a contradiction."""
+    """A LICENSE file while the note still says none was chosen is a contradiction."""
     write(broken_repo / "LICENSE", "MIT License\n")
-    write(broken_repo / "05 Technical" / "licensing.md", "No code licence has been selected.\n")
+    write(
+        broken_repo / VAULT / "05 Technical" / "licensing.md",
+        "No code licence has been selected.\n",
+    )
 
     verifier.check_license_documentation_is_consistent()
 
@@ -290,7 +295,7 @@ def test_licence_inconsistency_is_caught(broken_repo: Path):
 
 
 def test_missing_licence_declaration_is_caught(broken_repo: Path):
-    write(broken_repo / "05 Technical" / "licensing.md", "Everything is MIT.\n")
+    write(broken_repo / VAULT / "05 Technical" / "licensing.md", "Everything is MIT.\n")
 
     verifier.check_license_documentation_is_consistent()
 

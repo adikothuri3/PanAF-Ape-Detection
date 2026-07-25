@@ -62,7 +62,7 @@ service-account*.json
 
 # --------------------------------------------------------------------------- #
 # Model weights and checkpoints -- never committed. Weights are redistributed
-# under their own licence; see 05 Technical/licensing.md.
+# under their own licence; see docs/obsidian/05 Technical/licensing.md.
 # --------------------------------------------------------------------------- #
 *.pt
 *.pth
@@ -116,8 +116,8 @@ data/sample_manifest.csv
 *.npy
 *.npz
 # Documentation figures are tracked deliberately, once they exist.
-!05 Technical/**/*.png
-!05 Technical/**/*.svg
+!docs/obsidian/05 Technical/**/*.png
+!docs/obsidian/05 Technical/**/*.svg
 
 # Write-up figures. reports/phase1_writeup_template.md asks for a compact figure
 # in reports/figures/ and references it as figures/<name>.png -- without these
@@ -206,9 +206,10 @@ desktop.ini
 # The repository root doubles as an Obsidian vault. Vault config is tracked so
 # the layout is shared; only per-machine UI state is ignored.
 # --------------------------------------------------------------------------- #
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
-.obsidian/cache
+# `**/` so these keep working wherever the vault lives.
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+**/.obsidian/cache
 .trash/
 
 # --------------------------------------------------------------------------- #
@@ -224,9 +225,9 @@ desktop.ini
 # Vault note attachments. Without these, the blanket image rules above would
 # silently swallow any screenshot pasted into a note -- with no error, which is
 # the worst way to lose a figure.
-!04 Reference/attachments/**
-!04 Reference/attachments/*.png
-!04 Reference/attachments/*.jpg
-!04 Reference/attachments/*.jpeg
-!04 Reference/attachments/*.gif
-!04 Reference/attachments/*.svg
+!docs/obsidian/04 Reference/attachments/**
+!docs/obsidian/04 Reference/attachments/*.png
+!docs/obsidian/04 Reference/attachments/*.jpg
+!docs/obsidian/04 Reference/attachments/*.jpeg
+!docs/obsidian/04 Reference/attachments/*.gif
+!docs/obsidian/04 Reference/attachments/*.svg

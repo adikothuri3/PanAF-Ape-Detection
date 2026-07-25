@@ -2,14 +2,19 @@
 
 Guidance for Claude Code sessions in this repository.
 
-The project brain lives in the **Obsidian vault at the repository root** — start at
-[PanAf Command Center](00%20Start%20Here/PanAf%20Command%20Center.md). Run `/start-session` at the
-beginning of a session and `/log-session` at the end.
+The project brain lives in the **Obsidian vault at `docs/obsidian/`** — start at
+[PanAf Command Center](docs/obsidian/00%20Start%20Here/PanAf%20Command%20Center.md). Run
+`/start-session` at the beginning of a session and `/log-session` at the end.
 
-**All documentation is in the numbered folders** (`00 Start Here/` … `05 Technical/`). There is no
-`docs/` directory. This file, `README.md`, `experiments/experiment_log.md` and
-`reports/phase1_writeup_template.md` sit outside them only because tooling pins them there. When
-adding documentation, put it in a numbered folder and link to it — never restate an existing note.
+**All documentation is in the numbered folders under `docs/obsidian/`** (`00 Start Here/` …
+`05 Technical/`). This file, `README.md`, `experiments/experiment_log.md` and
+`reports/phase1_writeup_template.md` sit outside the vault only because tooling pins them there.
+When adding documentation, put it in a numbered folder and link to it — never restate an existing
+note.
+
+Notes are siblings of `docs/obsidian/.obsidian/`, never inside it: that directory is Obsidian's
+**configuration**, and anything placed there is not indexed as a note, so links and search would
+silently stop working.
 
 > **Current phase: Phase 1 "See" — sub-phase 1a (scaffold) complete and audited, 1b (clip
 > selection) next.** The stack is proven: `make smoke-detect` loads real weights and runs inference
@@ -22,7 +27,7 @@ Geologic Dome builds edge infrastructure and robots for extreme and regulated en
 autonomous field nodes and humanoids like **Pemba**, a Unitree G1. The thesis: the same AI that lets
 a robot move through the world can help watch over it. Perceive → predict → act.
 
-Mentor: **Pabs** (p@geologicdome.com). Context: [Geologic Dome Context](01%20Onboarding/Geologic%20Dome%20Context.md).
+Mentor: **Pabs** (p@geologicdome.com). Context: [Geologic Dome Context](docs/obsidian/01%20Onboarding/Geologic%20Dome%20Context.md).
 
 ### Four phases — get this right
 
@@ -35,7 +40,7 @@ Mentor: **Pabs** (p@geologicdome.com). Context: [Geologic Dome Context](01%20Onb
 
 An earlier README invented "Phase 2 = quantitative evaluation, Phase 3 = fine-tuning". **That was
 wrong.** Those are rigour *within* Phase 1, filed under "Beyond Phase 1".
-Authority: [Four Phase Arc](01%20Onboarding/Four%20Phase%20Arc.md).
+Authority: [Four Phase Arc](docs/obsidian/01%20Onboarding/Four%20Phase%20Arc.md).
 
 ### Phase 1, in six steps
 
@@ -48,19 +53,19 @@ Authority: [Four Phase Arc](01%20Onboarding/Four%20Phase%20Arc.md).
 
 **Deliverable:** a GitHub repo, 2–3 annotated clips or GIFs, the write-up.
 **Done means:** someone else can clone, follow the README, and reproduce one annotated clip.
-Full spec: [Phase 1 Task Spec](01%20Onboarding/Phase%201%20Task%20Spec.md).
+Full spec: [Phase 1 Task Spec](docs/obsidian/01%20Onboarding/Phase%201%20Task%20Spec.md).
 
 ## How we work
 
 Log every session including dead ends · check in weekly, especially when stuck · ask for help with
 what you tried + the exact error + what you expected · being stuck is normal.
-Details: [How We Work](01%20Onboarding/How%20We%20Work.md).
+Details: [How We Work](docs/obsidian/01%20Onboarding/How%20We%20Work.md).
 
 The running log is **`experiments/experiment_log.md` and nowhere else.** Do not start a second log.
 
 ## Architecture
 
-Full detail: [architecture](05%20Technical/architecture.md). The rules that constrain edits:
+Full detail: [architecture](docs/obsidian/05%20Technical/architecture.md). The rules that constrain edits:
 
 1. **Foundation modules import nothing from the project.** `types.py`, `config.py`, `paths.py` are leaves.
 2. **Stage modules never import each other.** `tracking/` consumes `Detection` from `types.py`, not `inference/`.
@@ -125,12 +130,12 @@ acquisition is manual and documented in [data/README.md](data/README.md).
 
 ### One source of truth
 
-If a vault note would restate `docs/`, `experiments/` or `reports/`, **link instead**. The vault
-adds the onboarding, reading, check-in and verified-reference layer; it does not mirror the repo.
+A fact has exactly one home. If a note would restate another note, or restate
+`experiments/experiment_log.md` or `reports/`, **link instead**.
 
 ## Licensing
 
-Three separate licences — [licensing](05%20Technical/licensing.md).
+Three separate licences — [licensing](docs/obsidian/05%20Technical/licensing.md).
 
 - **Code: no licence chosen.** No `LICENSE` file, so default copyright applies and the repo is
   public under it. **Do not add a LICENSE** unless asked — it has institutional implications.
@@ -145,11 +150,11 @@ species, individuals, or behaviour. Behaviour labels come from the **dataset**, 
 never write documentation or captions implying otherwise.
 
 Verified variants and the two broken upstream defaults:
-[`05 Technical/model.md`](05%20Technical/model.md). **Always pass `version=`
+[`docs/obsidian/05 Technical/model.md`](docs/obsidian/05%20Technical/model.md). **Always pass `version=`
 explicitly** — both classes' defaults raise `ValueError`.
 
 The nine dataset behaviour labels:
-[`05 Technical/dataset.md`](05%20Technical/dataset.md).
+[`docs/obsidian/05 Technical/dataset.md`](docs/obsidian/05%20Technical/dataset.md).
 
 ## Requirements for future changes
 
@@ -157,7 +162,7 @@ The nine dataset behaviour labels:
   downloaded in tests; use a stub detector satisfying the protocol.
 - **Docstrings** on public modules, classes and functions (Google style, Ruff `D`).
 - **Documentation updates** where behaviour changed — including flipping a stage from "not
-  implemented" in the README table, [architecture](05%20Technical/architecture.md) and the notebook.
+  implemented" in the README table, [architecture](docs/obsidian/05%20Technical/architecture.md) and the notebook.
 - **An experiment-log entry** for anything touching data or models, including failures and verbatim
   errors.
 - **`make lock`** if dependencies changed, committing `uv.lock` and `requirements-colab.txt`.
@@ -191,7 +196,7 @@ detector.predictor.args.device = device  # args
 
 Never record the *requested* device in `RunMetadata` — record what
 `runtime.module_device(detector)` reports. `scripts/smoke_detect.py` is the working reference.
-Full detail: [model docs](05%20Technical/model.md).
+Full detail: [model docs](docs/obsidian/05%20Technical/model.md).
 
 ## Smoke tests
 

@@ -23,6 +23,20 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# The Obsidian vault lives here, matching the convention used across these
+# projects. Notes sit alongside `.obsidian/`, never inside it -- Obsidian
+# treats that directory as configuration and does not index it as notes.
+VAULT_ROOT = "docs/obsidian"
+
+_VAULT_FOLDERS: tuple[str, ...] = (
+    "00 Start Here",
+    "01 Onboarding",
+    "02 Reading",
+    "03 Check-ins",
+    "04 Reference",
+    "05 Technical",
+)
+
 # Files that must exist for the repository to be usable by a new contributor.
 REQUIRED_FILES: tuple[str, ...] = (
     ".env.example",
@@ -47,11 +61,11 @@ REQUIRED_FILES: tuple[str, ...] = (
     "configs/colab.yaml",
     "data/README.md",
     "data/sample_manifest.example.csv",
-    "05 Technical/architecture.md",
-    "05 Technical/dataset.md",
-    "05 Technical/licensing.md",
-    "05 Technical/model.md",
-    "05 Technical/reproducibility.md",
+    "docs/obsidian/05 Technical/architecture.md",
+    "docs/obsidian/05 Technical/dataset.md",
+    "docs/obsidian/05 Technical/licensing.md",
+    "docs/obsidian/05 Technical/model.md",
+    "docs/obsidian/05 Technical/reproducibility.md",
     "experiments/README.md",
     "experiments/experiment_log.md",
     "notebooks/README.md",
@@ -85,17 +99,17 @@ REQUIRED_FILES: tuple[str, ...] = (
     ".claude/skills/start-session/SKILL.md",
     ".claude/skills/log-session/SKILL.md",
     ".claude/skills/finish-phase/SKILL.md",
-    # Obsidian vault -- the repository root doubles as the vault
-    ".obsidian/app.json",
-    ".obsidian/core-plugins.json",
-    "00 Start Here/PanAf Command Center.md",
-    "01 Onboarding/Geologic Dome Context.md",
-    "01 Onboarding/Four Phase Arc.md",
-    "01 Onboarding/Phase 1 Task Spec.md",
-    "01 Onboarding/How We Work.md",
-    "02 Reading/Reading List.md",
-    "03 Check-ins/Check-in Template.md",
-    "04 Reference/Glossary.md",
+    # Obsidian vault, at docs/obsidian/
+    f"{VAULT_ROOT}/.obsidian/app.json",
+    f"{VAULT_ROOT}/.obsidian/core-plugins.json",
+    "docs/obsidian/00 Start Here/PanAf Command Center.md",
+    "docs/obsidian/01 Onboarding/Geologic Dome Context.md",
+    "docs/obsidian/01 Onboarding/Four Phase Arc.md",
+    "docs/obsidian/01 Onboarding/Phase 1 Task Spec.md",
+    "docs/obsidian/01 Onboarding/How We Work.md",
+    "docs/obsidian/02 Reading/Reading List.md",
+    "docs/obsidian/03 Check-ins/Check-in Template.md",
+    "docs/obsidian/04 Reference/Glossary.md",
 )
 
 REQUIRED_DIRECTORIES: tuple[str, ...] = (
@@ -109,27 +123,15 @@ REQUIRED_DIRECTORIES: tuple[str, ...] = (
     "scripts",
     "src/panaf_ape_detection",
     "tests",
-    "00 Start Here",
-    "01 Onboarding",
-    "02 Reading",
-    "03 Check-ins",
-    "04 Reference",
-    "05 Technical",
+    *(f"{VAULT_ROOT}/{name}" for name in _VAULT_FOLDERS),
 )
 
 # The numbered note folders. All project documentation lives here; `experiments/`
 # and `reports/` hold the running log and the write-up, which are pinned to those
 # paths by tooling and are checked separately.
-VAULT_DIRECTORIES: tuple[str, ...] = (
-    "00 Start Here",
-    "01 Onboarding",
-    "02 Reading",
-    "03 Check-ins",
-    "04 Reference",
-    "05 Technical",
-)
+VAULT_DIRECTORIES: tuple[str, ...] = tuple(f"{VAULT_ROOT}/{name}" for name in _VAULT_FOLDERS)
 
-# Allowed `status:` values for a note in `02 Reading/`.
+# Allowed `status:` values for a note in `docs/obsidian/02 Reading/`.
 READING_STATUSES: frozenset[str] = frozenset({"not-started", "in-progress", "done"})
 
 # Extensions that must never be tracked by git, whatever the directory.
@@ -209,7 +211,7 @@ def check_required_paths() -> None:
 
 
 def check_license_documentation_is_consistent() -> None:
-    """The presence of a LICENSE file must agree with 05 Technical/licensing.md.
+    """The presence of a LICENSE file must agree with docs/obsidian/05 Technical/licensing.md.
 
     Adding a LICENSE without updating the documentation (or vice versa) leaves
     the repository making two contradictory claims about reuse rights.
@@ -217,7 +219,7 @@ def check_license_documentation_is_consistent() -> None:
     license_present = any(
         (REPO_ROOT / name).is_file() for name in ("LICENSE", "LICENSE.md", "LICENSE.txt")
     )
-    licensing_path = REPO_ROOT / "05 Technical" / "licensing.md"
+    licensing_path = REPO_ROOT / VAULT_ROOT / "05 Technical" / "licensing.md"
     licensing_doc = licensing_path.read_text(encoding="utf-8").lower()
     declares_unselected = (
         "no code licence has been selected" in licensing_doc
@@ -226,13 +228,13 @@ def check_license_documentation_is_consistent() -> None:
 
     if not license_present and not declares_unselected:
         fail(
-            "no LICENSE file exists, but 05 Technical/licensing.md no longer states that "
-            "the code licence is unselected. Keep the two consistent."
+            "no LICENSE file exists, but the licensing note no longer states that the code "
+            "licence is unselected. Keep the two consistent."
         )
     if license_present and declares_unselected:
         fail(
-            "a LICENSE file exists, but 05 Technical/licensing.md still says no code licence "
-            "has been selected. Update that note, CITATION.cff and the README licensing table."
+            "a LICENSE file exists, but the licensing note still says no code licence has "
+            "been selected. Update that note, CITATION.cff and the README licensing table."
         )
 
 
@@ -479,18 +481,18 @@ def check_wikilinks_resolve() -> None:
             target = match.group(1).strip()
             if not target:
                 continue
-            # A link may name a path (`05 Technical/model`) or just the note stem.
+            # A link may name a path (`docs/obsidian/05 Technical/model`) or just the note stem.
             stem = Path(target).stem
             if stem not in note_names:
                 fail(f"{relative}: wikilink [[{target}]] does not resolve to any note")
 
 
 def check_reading_notes_have_status() -> None:
-    """Every note in `02 Reading/` declares a known `status:` in its frontmatter."""
-    reading_dir = REPO_ROOT / "02 Reading"
+    """Every note in `docs/obsidian/02 Reading/` declares a known `status:` in its frontmatter."""
+    reading_dir = REPO_ROOT / VAULT_ROOT / "02 Reading"
     notes = [p for p in sorted(reading_dir.glob("*.md")) if p.name != "Reading List.md"]
     if not notes:
-        fail("02 Reading/ contains no reading notes")
+        fail("docs/obsidian/02 Reading/ contains no reading notes")
 
     for note in notes:
         relative = note.relative_to(REPO_ROOT).as_posix()

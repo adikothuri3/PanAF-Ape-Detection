@@ -272,7 +272,7 @@ def validate_config(
     if not loaded.model.variant_is_recognised:
         console.print(
             f"[yellow]Note:[/yellow] model.variant {loaded.model.variant!r} is not in the "
-            "set documented in 05 Technical/model.md. Confirm your installed "
+            "set documented in docs/obsidian/05 Technical/model.md. Confirm your installed "
             "PyTorch-Wildlife version supports it before relying on it."
         )
 

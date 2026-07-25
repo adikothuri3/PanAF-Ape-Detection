@@ -79,9 +79,9 @@ From [[Phase 1 Task Spec]]:
 
 | What | Where |
 |---|---|
-| Running research log — **the only one** | [experiments/experiment_log.md](../experiments/experiment_log.md) |
+| Running research log — **the only one** | [experiments/experiment_log.md](../../../experiments/experiment_log.md) |
 | Weekly check-ins | `03 Check-ins/`, from [[Check-in Template]] |
-| Write-up template | [reports/phase1_writeup_template.md](../reports/phase1_writeup_template.md) |
+| Write-up template | [reports/phase1_writeup_template.md](../../../reports/phase1_writeup_template.md) |
 | Run metadata (once inference exists) | `artifacts/metadata/` — not yet produced |
 
 Log every session, dead ends included — [[How We Work]]. `/log-session` drafts the entry.
@@ -105,7 +105,13 @@ Log every session, dead ends included — [[How We Work]]. `/log-session` drafts
 
 ## Where documentation lives
 
-**All project documentation is in the numbered vault folders.** There is no `docs/` directory.
+**All project documentation is in this vault, at `docs/obsidian/`.** Open that directory as the
+vault in Obsidian — not the repository root.
+
+> **Notes never go inside `.obsidian/`.** That directory is Obsidian's *configuration* (app.json,
+> core-plugins.json, workspace state). Obsidian does not index it as notes, so anything filed there
+> disappears from the file explorer, search and the graph, and every `[[wikilink]]` to it breaks.
+> Notes are **siblings** of `.obsidian/`, which is why the numbered folders sit next to it.
 
 | Folder | Holds |
 |---|---|

@@ -14,7 +14,7 @@ Four expectations from the onboarding document, and where each one lives in this
 > One running doc of what you tried each session, **dead ends included**. That is how research
 > actually works.
 
-**Where:** [experiments/experiment_log.md](../experiments/experiment_log.md) — the single running
+**Where:** [experiments/experiment_log.md](../../../experiments/experiment_log.md) — the single running
 log. There is deliberately **no second log** in this vault; a duplicate log is a log nobody trusts.
 
 The template at the top of that file already has the fields this asks for: objective, hypothesis,

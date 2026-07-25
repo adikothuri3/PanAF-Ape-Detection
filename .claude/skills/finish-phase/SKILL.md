@@ -25,7 +25,7 @@ artefacts a phase is supposed to leave behind.
    actually works — `uv run --extra inference python -c "import PytorchWildlife"` — because a
    successful resolve is not a successful import.
 
-3. **Walk the deliverable checklist** in `00 Start Here/PanAf Command Center.md` against reality.
+3. **Walk the deliverable checklist** in `docs/obsidian/00 Start Here/PanAf Command Center.md` against reality.
    Tick only what exists. If 2–3 annotated clips do not exist in `artifacts/videos/`, that box stays
    unticked no matter how close the code is.
 
@@ -34,7 +34,7 @@ artefacts a phase is supposed to leave behind.
    recorded runs. Leave `TODO` wherever there is no measurement. Never edit the template itself —
    `verify_repository.py` fails if its placeholders disappear.
 
-5. **Draft a check-in.** New dated note in `03 Check-ins/` from `Check-in Template.md`. Include what
+5. **Draft a check-in.** New dated note in `docs/obsidian/03 Check-ins/` from `Check-in Template.md`. Include what
    is stuck, with the three required fields: what you tried, the exact error, what you expected.
 
 6. **Log the session** — follow `/log-session` and append to `experiments/experiment_log.md`.
@@ -61,4 +61,4 @@ outstanding · the recommended next sub-phase.
 
 ## Related
 
-`00 Start Here/PanAf Command Center.md` · `01 Onboarding/Phase 1 Task Spec.md` · `reports/phase1_writeup_template.md` · `/log-session`
+`docs/obsidian/00 Start Here/PanAf Command Center.md` · `docs/obsidian/01 Onboarding/Phase 1 Task Spec.md` · `reports/phase1_writeup_template.md` · `/log-session`

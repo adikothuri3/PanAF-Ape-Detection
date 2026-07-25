@@ -189,7 +189,7 @@ FFmpeg is missing on this machine and will be needed before video decoding or ex
 
 **Next action**
 Install FFmpeg. Then obtain PanAf500 access, select 5–10 clips against the axes in
-`05 Technical/dataset.md`, and populate `data/sample_manifest.csv` with checksums. Then implement frame
+`docs/obsidian/05 Technical/dataset.md`, and populate `data/sample_manifest.csv` with checksums. Then implement frame
 extraction (`data/video.py`) with tests against synthetic video.
 
 ---
@@ -308,7 +308,7 @@ The stack itself is in good shape: imports work, ByteTrack works under numpy 2.x
 through OpenCV and imageio, GIF export works, and real weights load and run.
 
 **Next action**
-Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `05 Technical/dataset.md`, populate
+Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `docs/obsidian/05 Technical/dataset.md`, populate
 `data/sample_manifest.csv` with checksums (`provenance.file_sha256` now computes them), then
 implement `data/manifest.py` before `data/video.py`, tested against synthetic video.
 
@@ -359,7 +359,7 @@ One data-loss bug and six smaller defects.
    are the entire Phase 1d/1e deliverable, would have been destroyed on write with no error.
 2. **Detection records were not self-describing.** No frame dimensions anywhere, so a saved record
    could not be normalised or bounds-checked without re-opening the video. This blocked "small
-   distant subjects", a failure axis `05 Technical/model.md` names, since measuring it needs box area
+   distant subjects", a failure axis `docs/obsidian/05 Technical/model.md` names, since measuring it needs box area
    *relative to frame area*.
 3. **The Colab notebook predated the runtime layer** and never mentioned the device bug — despite
    Colab being exactly where that bug costs most.
@@ -420,6 +420,6 @@ The variance error is worth remembering: mypy caught a real correctness hole tha
 have, because the unsound path required `.append()` on a downcast reference.
 
 **Next action**
-Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `05 Technical/dataset.md`, fill
+Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `docs/obsidian/05 Technical/dataset.md`, fill
 `data/sample_manifest.csv` (schema now in `manifest.py`, digests from `provenance.file_sha256`),
 then implement `data/manifest.py` loading before `data/video.py`, tested against synthetic video.

@@ -184,7 +184,7 @@ class RepositoryPaths:
             interim_data_dir=data / "interim",
             processed_data_dir=data / "processed",
             artifacts_dir=base / "artifacts",
-            docs_dir=base / "05 Technical",
+            docs_dir=base / "docs" / "obsidian" / "05 Technical",
             experiments_dir=base / "experiments",
             reports_dir=base / "reports",
         )
@@ -219,7 +219,7 @@ class RepositoryPaths:
             interim_data_dir=resolve_under_root(paths_config.interim_data_dir, base),
             processed_data_dir=resolve_under_root(paths_config.processed_data_dir, base),
             artifacts_dir=resolve_under_root(paths_config.artifacts_dir, base),
-            docs_dir=base / "05 Technical",
+            docs_dir=base / "docs" / "obsidian" / "05 Technical",
             experiments_dir=base / "experiments",
             reports_dir=base / "reports",
         )

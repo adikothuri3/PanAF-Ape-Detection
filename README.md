@@ -21,7 +21,7 @@ overlay, and video export. No detections have been produced by this repository. 
 metrics, or figures in this repository are real, because none have been generated.
 
 Current task, reading progress and the deliverable checklist are tracked in
-[`00 Start Here/PanAf Command Center.md`](00%20Start%20Here/PanAf%20Command%20Center.md).
+[`docs/obsidian/00 Start Here/PanAf Command Center.md`](docs/obsidian/00%20Start%20Here/PanAf%20Command%20Center.md).
 
 ## Phase 1 research question
 
@@ -92,7 +92,7 @@ underneath every stage rather than inside one.
 | Video export | Not implemented | `src/panaf_ape_detection/visualization/` |
 | Qualitative evaluation | Not implemented | `src/panaf_ape_detection/evaluation/` |
 
-See [`05 Technical/architecture.md`](05%20Technical/architecture.md) for the intended module boundaries.
+See [`docs/obsidian/05 Technical/architecture.md`](docs/obsidian/05%20Technical/architecture.md) for the intended module boundaries.
 
 ## Quick start
 
@@ -213,19 +213,20 @@ until the exact endpoint and terms have been verified.
 
 ## Repository layout
 
-The repository root doubles as an **Obsidian vault**. **All documentation lives in the numbered
-folders below** — there is no separate `docs/` directory. Open the repository root with *Open folder
-as vault* to browse it with backlinks and graph view; everything is plain Markdown and reads fine
-without Obsidian.
+**All documentation lives in the Obsidian vault at `docs/obsidian/`.** Open *that directory* with
+*Open folder as vault* to browse it with backlinks and graph view; everything is plain Markdown and
+reads fine without Obsidian.
 
 ```text
 .
-├── 00 Start Here/      PanAf Command Center — the entry point, start here
-├── 01 Onboarding/      Project context, four-phase arc, Phase 1 spec, working practice
-├── 02 Reading/         The onboarding reading list, one note per item
-├── 03 Check-ins/       Weekly check-in template and notes
-├── 04 Reference/       Glossary
-├── 05 Technical/       Architecture, dataset, model, licensing, reproducibility
+├── docs/obsidian/      The vault — all project documentation
+│   ├── .obsidian/      Obsidian config (not notes; Obsidian does not index it)
+│   ├── 00 Start Here/  PanAf Command Center — the entry point, start here
+│   ├── 01 Onboarding/  Project context, four-phase arc, Phase 1 spec, working practice
+│   ├── 02 Reading/     The onboarding reading list, one note per item
+│   ├── 03 Check-ins/   Weekly check-in template and notes
+│   ├── 04 Reference/   Glossary
+│   └── 05 Technical/   Architecture, dataset, model, licensing, reproducibility
 ├── .github/            CI, Dependabot, issue and PR templates
 ├── .claude/            Claude Code hook and session skills
 ├── configs/            Versioned YAML configurations (base, colab)
@@ -260,7 +261,7 @@ Generated outputs go to `artifacts/`, which git ignores completely:
 artifacts/
 ├── detections/       Per-clip detection records
 ├── frames/           Extracted or rendered frames
-├── metadata/         Run metadata (see 05 Technical/reproducibility.md)
+├── metadata/         Run metadata (see docs/obsidian/05 Technical/reproducibility.md)
 ├── metrics/          Numerical summaries
 ├── videos/           Annotated clips and GIFs
 └── visualizations/   Diagnostic plots and overlays
@@ -290,7 +291,7 @@ than one that does not exist.
 
 ## Reproducibility policy
 
-Summarised here, defined in full in [`05 Technical/reproducibility.md`](05%20Technical/reproducibility.md):
+Summarised here, defined in full in [`docs/obsidian/05 Technical/reproducibility.md`](docs/obsidian/05%20Technical/reproducibility.md):
 
 1. The environment is locked (`uv.lock`, committed) and the Python version is pinned
    (`.python-version`).
@@ -409,7 +410,7 @@ PanAf20K, the Bristol data deposit, MegaDetector and PyTorch-Wildlife are in
 | MegaDetector V6 weights | Varies **by variant** — the YOLOv9/YOLOv10 variants and the Apache RT-DETR variant differ |
 
 Because no `LICENSE` file exists, default copyright applies to this code and no one has been
-granted rights to reuse it. Read [`05 Technical/licensing.md`](05%20Technical/licensing.md) before publishing,
+granted rights to reuse it. Read [`docs/obsidian/05 Technical/licensing.md`](docs/obsidian/05%20Technical/licensing.md) before publishing,
 redistributing, or using any of this commercially.
 
 ## Acknowledgements

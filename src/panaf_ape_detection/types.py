@@ -3,7 +3,7 @@
 Nothing in this module performs inference. The detection, track and run-metadata
 models are defined up front so that the pipeline stages implemented in later
 tasks all agree on one schema, and so that the reproducibility contract in
-``05 Technical/reproducibility.md`` has a concrete representation.
+``docs/obsidian/05 Technical/reproducibility.md`` has a concrete representation.
 
 .. warning::
    The pipeline does not yet exist. No code in this repository currently
@@ -110,7 +110,7 @@ class BoundingBox(_StrictModel):
     def relative_area(self, frame_width: int, frame_height: int) -> float:
         """Return the box area as a fraction of the frame area.
 
-        The scale-free measure of subject size. ``05 Technical/model.md`` names
+        The scale-free measure of subject size. ``docs/obsidian/05 Technical/model.md`` names
         "distant / small subjects" as an expected failure condition, and testing
         that requires comparing box size *relative to the frame* — absolute
         pixel area is meaningless across clips of different resolutions.
@@ -270,7 +270,7 @@ class InputFileRecord(_StrictModel):
 class RunMetadata(_StrictModel):
     """Everything needed to describe and re-run one pipeline execution.
 
-    This is the schema referenced by ``05 Technical/reproducibility.md``. It is defined
+    This is the schema referenced by the reproducibility note in the vault. It is defined
     here so that the inference implementation added in the next phase writes a
     stable, reviewable record next to every generated artefact.
 

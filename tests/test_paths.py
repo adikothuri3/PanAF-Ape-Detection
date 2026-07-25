@@ -142,7 +142,7 @@ def test_from_config_keeps_checkout_directories_at_defaults(tmp_path: Path):
     paths = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
 
     assert paths.configs_dir == tmp_path.resolve() / "configs"
-    assert paths.docs_dir == tmp_path.resolve() / "05 Technical"
+    assert paths.docs_dir == tmp_path.resolve() / "docs" / "obsidian" / "05 Technical"
     assert paths.reports_dir == tmp_path.resolve() / "reports"
 
 

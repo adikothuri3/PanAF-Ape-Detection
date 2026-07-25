@@ -58,7 +58,7 @@ repos:
         name: block dataset files and model weights
         entry: >-
           Refusing to commit dataset files, media or model weights.
-          See data/README.md and 05 Technical/licensing.md.
+          See data/README.md and docs/obsidian/05 Technical/licensing.md.
         language: fail
         files: >-
           (?x)^(

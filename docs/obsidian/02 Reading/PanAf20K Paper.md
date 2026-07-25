@@ -25,8 +25,8 @@ citation. **Not** yet read for annotation format, which is why
 
 - Dataset background and limitations → [dataset docs](../05%20Technical/dataset.md)
 - The 9 action labels → [[dataset|the nine action labels]]
-- Citation and BibTeX → [references.bib](../references.bib)
-- Access, licence and folder layout → [data/README.md](../data/README.md)
+- Citation and BibTeX → [references.bib](../../../references.bib)
+- Access, licence and folder layout → [data/README.md](../../../data/README.md)
 
 Do not duplicate those here. Use this note for what you learn *from reading the paper itself*.
 

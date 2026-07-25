@@ -17,12 +17,12 @@ is done. Nothing in this repo has produced a detection.
 
 | # | Step | What it asks for | Status |
 |---|---|---|---|
-| 1 | **Set up** | GitHub account; Python via uv or conda; VS Code or Cursor. No personal GPU needed — use Google Colab's free GPU for model work. | ✅ **Done** — uv + Python 3.11, locked env, [repo published](https://github.com/adikothuri3/PanAF-Ape-Detection), [Colab scaffold](../notebooks/README.md) |
-| 2 | **Get the data** | Download a small slice of **PanAf500**: frame-by-frame boxes, individual IDs, species, and 9 action labels. Start with **5 to 10 clips**, not all 7 million frames. | ⬜ Not started — see [data/README.md](../data/README.md) |
+| 1 | **Set up** | GitHub account; Python via uv or conda; VS Code or Cursor. No personal GPU needed — use Google Colab's free GPU for model work. | ✅ **Done** — uv + Python 3.11, locked env, [repo published](https://github.com/adikothuri3/PanAF-Ape-Detection), [Colab scaffold](../../../notebooks/README.md) |
+| 2 | **Get the data** | Download a small slice of **PanAf500**: frame-by-frame boxes, individual IDs, species, and 9 action labels. Start with **5 to 10 clips**, not all 7 million frames. | ⬜ Not started — see [data/README.md](../../../data/README.md) |
 | 3 | **Detect** | Run PyTorch-Wildlife (MegaDetector) on the clips, draw boxes on each frame, stitch back into an annotated video. | ⬜ Not started |
 | 4 | **Track** | Give each ape a stable ID across frames with a simple tracker — **SORT or ByteTrack**. | ⬜ Not started — backend undecided by design |
 | 5 | **Compare** | Show the dataset's action label next to your detections. **Does what you see match the label?** | ⬜ Not started |
-| 6 | **Write it up** | One page: what worked, what failed (missed detections, ID switches, dark frames), and **three ideas** to make it better. | ⬜ Template ready at [reports/phase1_writeup_template.md](../reports/phase1_writeup_template.md) |
+| 6 | **Write it up** | One page: what worked, what failed (missed detections, ID switches, dark frames), and **three ideas** to make it better. | ⬜ Template ready at [reports/phase1_writeup_template.md](../../../reports/phase1_writeup_template.md) |
 
 The 9 action labels are listed in [[dataset|the nine action labels]].
 

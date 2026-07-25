@@ -1,7 +1,7 @@
 # Dataset
 
 Operational instructions for obtaining and organising the data are in
-[`../data/README.md`](../data/README.md). This document covers what the dataset *is* and how to
+[`../../../data/README.md`](../../../data/README.md). This document covers what the dataset *is* and how to
 think about it.
 
 ## PanAf20K
@@ -140,7 +140,7 @@ Practical implications for this work:
 ## Citation requirements
 
 If you use this data, cite the PanAf20K paper **and** the data deposit. BibTeX entries for both are
-in [`../references.bib`](../references.bib).
+in [`../../../references.bib`](../../../references.bib).
 
 > Brookes, O., Mirmehdi, M., Stephens, C., Angedakin, S., Corogenes, K., Dowd, D., Dieguez, P.,
 > Hicks, T. C., Jones, S., Lee, K., Leinert, V., Lapuente, J., McCarthy, M. S., Meier, A., Murai, M.,

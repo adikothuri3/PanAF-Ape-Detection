@@ -80,4 +80,4 @@ Carry these forward until answered:
 
 ## Related
 
-[[How We Work]] · [[Phase 1 Task Spec]] · [[PanAf Command Center]] · [experiment log](../experiments/experiment_log.md)
+[[How We Work]] · [[Phase 1 Task Spec]] · [[PanAf Command Center]] · [experiment log](../../../experiments/experiment_log.md)

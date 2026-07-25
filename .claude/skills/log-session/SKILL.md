@@ -22,14 +22,14 @@ is already at the top of that file — use it as-is, newest entry appended at th
 2. **Append a log entry** to `experiments/experiment_log.md` using that file's own template.
    Every field, in order. Fields that do not apply get an explicit "not applicable" or
    "not measured" — not a deleted heading.
-3. **Command Center** — update `00 Start Here/PanAf Command Center.md` only if Current Status,
+3. **Command Center** — update `docs/obsidian/00 Start Here/PanAf Command Center.md` only if Current Status,
    Current Phase, Current Active Task, Next Recommended Task, the deliverable checklist or Known
    gaps actually changed. Bump `updated:` when you change anything.
 4. **Reading notes** — if a reading item was started or finished, update its `status:` frontmatter
-   in `02 Reading/` **and** the matching row in `02 Reading/Reading List.md`. Keep the two in sync;
+   in `docs/obsidian/02 Reading/` **and** the matching row in `docs/obsidian/02 Reading/Reading List.md`. Keep the two in sync;
    `verify_repository.py --only vault` checks the frontmatter.
 5. **Check-in** — if something blocking came up, note it under Standing questions in
-   `03 Check-ins/Check-in Template.md` or draft a dated check-in.
+   `docs/obsidian/03 Check-ins/Check-in Template.md` or draft a dated check-in.
 6. **Verify** — run `uv run python scripts/verify_repository.py --only vault` to confirm no
    wikilink was broken.
 
@@ -53,4 +53,4 @@ What was logged and where, as links. What you deliberately did **not** update, a
 
 ## Related
 
-`experiments/experiment_log.md` · `01 Onboarding/How We Work.md` · `00 Start Here/PanAf Command Center.md` · `/finish-phase`
+`experiments/experiment_log.md` · `docs/obsidian/01 Onboarding/How We Work.md` · `docs/obsidian/00 Start Here/PanAf Command Center.md` · `/finish-phase`

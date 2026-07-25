@@ -162,9 +162,9 @@ def test_validate_config_flags_unrecognised_variant(
     result = invoke("validate-config", "--config", str(write_config(config_data)))
 
     assert result.exit_code == 0, result.output
-    # rich hard-wraps to the terminal width, so "05 Technical/model.md" can be
+    # rich hard-wraps to the terminal width, so "docs/obsidian/05 Technical/model.md" can be
     # split across lines. Collapse whitespace before matching.
-    assert "05 Technical/model.md" in unwrap(result.output)
+    assert "docs/obsidian/05 Technical/model.md" in unwrap(result.output)
 
 
 @pytest.mark.parametrize("command", ["doctor", "show-paths"])

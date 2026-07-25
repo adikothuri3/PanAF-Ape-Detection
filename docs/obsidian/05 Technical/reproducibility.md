@@ -65,7 +65,7 @@ Setting a seed is not the same as achieving determinism (see below).
 
 ### 7. Every run writes metadata
 
-Schema: `RunMetadata` in [`../src/panaf_ape_detection/types.py`](../src/panaf_ape_detection/types.py).
+Schema: `RunMetadata` in [`../../../src/panaf_ape_detection/types.py`](../../../src/panaf_ape_detection/types.py).
 
 > **The producer exists; no pipeline calls it yet.**
 > `panaf_ape_detection.provenance.build_run_metadata()` assembles the record and

@@ -1,7 +1,7 @@
 """Producers for the run-metadata record.
 
 ``types.RunMetadata`` defines *what* a reproducible run records;
-``05 Technical/reproducibility.md`` explains *why* each field is there. This module is
+``docs/obsidian/05 Technical/reproducibility.md`` explains *why* each field is there. This module is
 the single place that actually produces one.
 
 Nothing here imports the machine-learning stack, so run metadata can be built

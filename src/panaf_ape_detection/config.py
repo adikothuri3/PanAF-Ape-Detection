@@ -77,7 +77,7 @@ _KNOWN_MODEL_VARIANTS: Final[frozenset[str]] = frozenset(
 
 Used for a *warning-free* soft check only: an unrecognised variant is accepted
 so that the repository does not break when upstream adds new weights, but the
-recognised set is documented in ``05 Technical/model.md``.
+recognised set is documented in ``docs/obsidian/05 Technical/model.md``.
 """
 
 _VALID_LOG_LEVELS: Final[frozenset[str]] = frozenset(
