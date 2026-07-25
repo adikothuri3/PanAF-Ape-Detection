@@ -119,6 +119,17 @@ data/sample_manifest.csv
 !docs/**/*.png
 !docs/**/*.svg
 
+# Write-up figures. reports/phase1_writeup_template.md asks for a compact figure
+# in reports/figures/ and references it as figures/<name>.png -- without these
+# negations the blanket image rules above would swallow it with no error, and the
+# deliverable would be missing a figure nobody noticed was dropped.
+!reports/figures/**
+!reports/figures/*.png
+!reports/figures/*.jpg
+!reports/figures/*.jpeg
+!reports/figures/*.gif
+!reports/figures/*.svg
+
 # --------------------------------------------------------------------------- #
 # Generated artifacts -- everything, always. Regenerate, never commit.
 # --------------------------------------------------------------------------- #

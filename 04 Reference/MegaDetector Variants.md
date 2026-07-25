@@ -38,6 +38,28 @@ Behaviour labels come from the dataset ([[PanAf500 Action Labels]]), never the m
 Weights download from Zenodo record `15398270` on first use. They are **never committed** —
 `.gitignore` blocks `*.pt` / `*.pth`.
 
+## ⚠️ `device=` is ignored — the model silently runs on CPU
+
+The single most consequential trap in this stack. `MegaDetectorV6(device="cuda")` stores the value
+and never applies it: in `yolov8_base._load_model` the line that would is commented out —
+`# self.predictor.args.device = device # Will uncomment later`.
+
+Nothing raises. `detector.device` still says `"cuda"`. **On a Colab GPU runtime you would get CPU
+speed while every log line claimed CUDA**, and the run metadata would record a device the model
+never touched.
+
+The fix, applied *after* the model is set up — all three lines are required:
+
+```python
+torch_device = torch.device(device)
+detector.predictor.model.to(torch_device)  # weights
+detector.predictor.device = torch_device  # inputs — omit this and the forward pass crashes
+detector.predictor.args.device = device  # args, for anything reading them later
+```
+
+Verify rather than assume: `runtime.module_device(detector)` reads the actual parameter devices.
+`scripts/smoke_detect.py` is the working reference. Measured on an M1: 2.13 s CPU → 1.53 s MPS.
+
 ## ⚠️ Both upstream defaults are broken
 
 - `MegaDetectorV6.__init__` defaults to `version='yolov9c'`

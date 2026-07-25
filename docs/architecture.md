@@ -1,8 +1,9 @@
 # Architecture
 
-**Status: intended design.** Only `config.py`, `paths.py`, `types.py` and `cli.py` exist today.
-Everything else below describes where code will go and why, so that the next implementation task
-has a target rather than a blank page.
+**Status: partly implemented.** The foundation — `config.py`, `paths.py`, `types.py`, `runtime.py`,
+`provenance.py` and `cli.py` — exists and is tested. Every stage module below (`data/`,
+`inference/`, `tracking/`, `visualization/`, `evaluation/`, `pipeline/`) is still a design, marked
+`[planned]`, so that the next implementation task has a target rather than a blank page.
 
 ## Principle
 
@@ -23,6 +24,10 @@ src/panaf_ape_detection/
 ├── paths.py            Repository-root discovery and the canonical layout.
 ├── types.py            Shared schemas: Detection, TrackedDetection, RunMetadata.
 ├── config.py           Typed YAML configuration.
+├── runtime.py          Device resolution, seeding, and verifying where weights
+│                       actually live. Lazy torch imports only.
+├── provenance.py       Checksums, git state, dependency versions, and the one
+│                       producer of RunMetadata.
 ├── cli.py              Typer entry point. Thin: parses, delegates, prints.
 │
 ├── data/               [planned]

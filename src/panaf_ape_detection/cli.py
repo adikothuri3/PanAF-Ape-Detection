@@ -294,9 +294,39 @@ def validate_config(
 
 
 @app.command("show-paths")
-def show_paths() -> None:
-    """Print the resolved repository layout and expected artifact directories."""
-    paths = RepositoryPaths.from_root(repository_root())
+def show_paths(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help=(
+                "Resolve paths through this config, so the output reflects what a run would "
+                "actually use. Omit to show the plain checkout layout."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Print the resolved repository layout and expected artifact directories.
+
+    With ``--config`` the ``paths`` section (and any ``PANAF_*`` override) is
+    applied, which is what a pipeline run will see. Without it, the layout of a
+    fresh checkout is shown.
+    """
+    if config is None:
+        paths = RepositoryPaths.from_root(repository_root())
+        console.print(
+            "[dim]Showing the default checkout layout. "
+            "Pass --config to see the paths a run would use.[/dim]"
+        )
+    else:
+        try:
+            loaded = load_config(config)
+        except ConfigError as exc:
+            _error_console.print(f"[red]Configuration invalid[/red]\n{exc}")
+            raise typer.Exit(code=1) from exc
+        paths = loaded.repository_paths()
+        console.print(f"[dim]Paths resolved through {config}.[/dim]")
 
     layout = Table(title="Repository layout", show_header=True, header_style="bold")
     layout.add_column("Name")

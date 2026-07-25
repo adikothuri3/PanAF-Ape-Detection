@@ -20,12 +20,18 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      # File hygiene
+      # File hygiene.
+      # `.obsidian/` is excluded because Obsidian rewrites those JSON files
+      # itself, without a trailing newline, every time the vault is opened.
+      # Reformatting them here just starts a fight that reappears on every commit.
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        exclude: ^\.obsidian/
       - id: end-of-file-fixer
+        exclude: ^\.obsidian/
       - id: mixed-line-ending
         args: [--fix=lf]
+        exclude: ^\.obsidian/
 
       # Format validation
       - id: check-yaml

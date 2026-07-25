@@ -269,8 +269,13 @@ class Config(_Section):
     logging: LoggingConfig
 
     def repository_paths(self) -> RepositoryPaths:
-        """Return the canonical repository layout this config sits inside."""
-        return RepositoryPaths.from_root(repository_root())
+        """Return the layout this configuration actually selects.
+
+        Honours the ``paths`` section, so a relocated ``artifacts_dir`` is
+        reflected here rather than silently ignored in favour of the checkout
+        default.
+        """
+        return RepositoryPaths.from_config(self.paths, repository_root())
 
     def describe(self) -> dict[str, str]:
         """Return a flat, human-readable summary for CLI display."""
@@ -278,6 +283,10 @@ class Config(_Section):
             "project.name": self.project.name,
             "project.experiment_name": self.project.experiment_name,
             "project.seed": str(self.project.seed),
+            "paths.raw_data_dir": str(self.paths.raw_data_dir),
+            "paths.interim_data_dir": str(self.paths.interim_data_dir),
+            "paths.processed_data_dir": str(self.paths.processed_data_dir),
+            "paths.artifacts_dir": str(self.paths.artifacts_dir),
             "data.manifest_path": str(self.data.manifest_path),
             "data.max_clips": str(self.data.max_clips),
             "data.frame_stride": str(self.data.frame_stride),

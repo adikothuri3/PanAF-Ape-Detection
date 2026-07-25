@@ -75,6 +75,46 @@ and `.gitignore` blocks `*.pt` / `*.pth` to keep it that way.
 The `-c` variants are the smaller/faster ones and `-e` the larger; the exact speed–accuracy
 trade-off on this footage is an empirical question Phase 1 does not attempt to answer.
 
+### ⚠️ The `device=` argument is ignored — the model runs on CPU
+
+**Verified against the installed PyTorch-Wildlife 1.3.0.** This is the most consequential trap in
+the stack, and it is silent.
+
+`MegaDetectorV6(device="cuda")` accepts the argument, stores it on `self.device`, and passes it to
+`_load_model` — where the only line that would apply it is commented out:
+
+```python
+# src/PytorchWildlife/models/detection/ultralytics_based/yolov8_base.py
+# self.predictor.args.device = device # Will uncomment later
+```
+
+The Ultralytics predictor therefore keeps its default and **loads the weights onto CPU**. Nothing
+raises. `detector.device` still reports `"cuda"`. On a Colab GPU runtime you would get CPU speed
+while every log line, and the run metadata, claimed CUDA.
+
+Setting `predictor.args.device` after construction does **not** help — `setup_model()` has already
+run. The working fix is three lines, applied after the model is set up:
+
+```python
+import torch
+
+torch_device = torch.device(device)  # "cuda" | "mps" | "cpu"
+detector.predictor.model.to(torch_device)  # move the weights
+detector.predictor.device = torch_device  # tell preprocessing where inputs go
+detector.predictor.args.device = device  # keep args consistent
+```
+
+Omitting the second line moves the weights but not the inputs, and the next forward pass dies with
+`input(device='cpu') and weight(device='mps:0') must be on the same device`.
+
+**Do not trust the claim — check the tensors.** `panaf_ape_detection.runtime.module_device()` reports
+where the parameters actually live, and `scripts/smoke_detect.py` is a working reference: it detects
+the mismatch, applies the fix, and verifies it took. Measured on an M1: 2.13 s on CPU, 1.53 s after
+the move to MPS.
+
+The Phase 1c adapter must do this and record the **verified** device in `RunMetadata`, not the
+requested one.
+
 ### The upstream defaults are broken — always set the variant explicitly
 
 Verified against the installed PyTorch-Wildlife 1.3.0:

@@ -58,16 +58,22 @@ REQUIRED_FILES: tuple[str, ...] = (
     "notebooks/phase1_colab.ipynb",
     "reports/phase1_writeup_template.md",
     "scripts/check_environment.py",
+    "scripts/smoke_detect.py",
+    "scripts/smoke_inference.py",
     "scripts/verify_repository.py",
     "src/panaf_ape_detection/__init__.py",
     "src/panaf_ape_detection/cli.py",
     "src/panaf_ape_detection/config.py",
     "src/panaf_ape_detection/paths.py",
+    "src/panaf_ape_detection/provenance.py",
     "src/panaf_ape_detection/py.typed",
+    "src/panaf_ape_detection/runtime.py",
     "src/panaf_ape_detection/types.py",
     "tests/test_cli.py",
     "tests/test_config.py",
     "tests/test_paths.py",
+    "tests/test_provenance.py",
+    "tests/test_runtime.py",
     # Claude Code integration
     ".claude/settings.json",
     ".claude/hooks/ruff-check.sh",
@@ -532,6 +538,34 @@ def check_no_second_research_log() -> None:
                 )
 
 
+def check_report_figures_are_trackable() -> None:
+    """Write-up figures must not be silently git-ignored.
+
+    ``reports/phase1_writeup_template.md`` asks for a figure in
+    ``reports/figures/``, but the blanket ``*.png`` rule in ``.gitignore``
+    previously swallowed it — with no error, so the deliverable would simply be
+    missing a figure nobody noticed was dropped.
+    """
+    if not _in_git_repository():
+        print("  (skipped: not a git repository yet)")
+        return
+
+    for name in ("audit_probe.png", "audit_probe.jpg", "audit_probe.gif", "audit_probe.svg"):
+        candidate = f"reports/figures/{name}"
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", candidate],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+        )
+        # check-ignore exits 0 when the path IS ignored.
+        if result.returncode == 0:
+            fail(
+                f"{candidate} would be git-ignored, but the write-up template asks for a figure "
+                "there. Add a negation for reports/figures/ in .gitignore."
+            )
+
+
 def check_no_fabricated_results() -> None:
     """Report templates must not have been pre-filled with invented findings."""
     template = REPO_ROOT / "reports" / "phase1_writeup_template.md"
@@ -567,6 +601,7 @@ CHECKS: tuple[tuple[str, str, Callable[[], None]], ...] = (
         check_colab_requirements_derived_from_lock,
     ),
     ("honesty", "no fabricated results in templates", check_no_fabricated_results),
+    ("data", "write-up figures are not git-ignored", check_report_figures_are_trackable),
     ("vault", "wikilinks resolve to real notes", check_wikilinks_resolve),
     ("vault", "reading notes declare a known status", check_reading_notes_have_status),
     ("vault", "Obsidian local UI state is not tracked", check_vault_local_state_not_tracked),

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from panaf_ape_detection.config import Config, load_config
 from panaf_ape_detection.paths import RepositoryPaths, repository_root
+from panaf_ape_detection.runtime import resolve_device, set_seeds
 
 __all__ = [
     "Config",
@@ -21,6 +22,8 @@ __all__ = [
     "__version__",
     "load_config",
     "repository_root",
+    "resolve_device",
+    "set_seeds",
 ]
 
 __version__ = "0.1.0"

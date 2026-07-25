@@ -5,7 +5,8 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help setup setup-inference doctor lint format format-check typecheck \
-        test test-fast quality verify colab-requirements lock hooks clean
+        test test-fast quality verify smoke-inference smoke-detect \
+        colab-requirements lock hooks clean
 
 UV ?= uv
 
@@ -48,6 +49,12 @@ quality: lint format-check typecheck test  ## Run every quality gate (what CI ru
 
 verify:  ## Verify repository structural invariants
 	$(UV) run python scripts/verify_repository.py
+
+smoke-inference:  ## Check the inference extra actually works (no weights downloaded)
+	$(UV) run --extra inference python scripts/smoke_inference.py
+
+smoke-detect:  ## Load real MegaDetector weights and run one inference (downloads ~1GB)
+	$(UV) run --extra inference python scripts/smoke_detect.py
 
 colab-requirements:  ## Regenerate requirements-colab.txt from uv.lock
 	$(UV) export --extra inference --no-hashes --no-dev \

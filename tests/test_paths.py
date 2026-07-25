@@ -94,3 +94,94 @@ def test_missing_directories_reports_absent_paths(tmp_path: Path):
 def test_real_checkout_has_the_expected_directories():
     """The committed repository ships every layout directory except artifacts/."""
     assert RepositoryPaths.from_root().missing_directories() == []
+
+
+# --------------------------------------------------------------------------- #
+# from_config -- configured paths must actually be honoured.
+#
+# Regression guard: `PathsConfig` was previously validated and then discarded,
+# so `paths.artifacts_dir` and `PANAF_ARTIFACTS_DIR` had no effect on anything.
+# --------------------------------------------------------------------------- #
+
+
+class _StubPaths:
+    """Minimal stand-in satisfying the `PathsLike` protocol."""
+
+    def __init__(self, base: Path) -> None:
+        self.raw_data_dir = base / "elsewhere" / "raw"
+        self.interim_data_dir = base / "elsewhere" / "interim"
+        self.processed_data_dir = base / "elsewhere" / "processed"
+        self.artifacts_dir = base / "somewhere-else" / "artifacts"
+
+
+def test_from_config_uses_configured_locations(tmp_path: Path):
+    stub = _StubPaths(tmp_path)
+
+    paths = RepositoryPaths.from_config(stub, tmp_path)
+
+    assert paths.raw_data_dir == stub.raw_data_dir
+    assert paths.interim_data_dir == stub.interim_data_dir
+    assert paths.processed_data_dir == stub.processed_data_dir
+    assert paths.artifacts_dir == stub.artifacts_dir
+
+
+def test_from_config_differs_from_the_checkout_default(tmp_path: Path):
+    configured = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
+    default = RepositoryPaths.from_root(tmp_path)
+
+    assert configured.artifacts_dir != default.artifacts_dir
+
+
+def test_from_config_derives_data_dir_from_raw(tmp_path: Path):
+    paths = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
+
+    assert paths.data_dir == (tmp_path / "elsewhere").resolve()
+
+
+def test_from_config_keeps_checkout_directories_at_defaults(tmp_path: Path):
+    paths = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
+
+    assert paths.configs_dir == tmp_path.resolve() / "configs"
+    assert paths.docs_dir == tmp_path.resolve() / "docs"
+    assert paths.reports_dir == tmp_path.resolve() / "reports"
+
+
+def test_artifact_subdirectories_follow_the_configured_root(tmp_path: Path):
+    paths = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
+
+    assert paths.artifact_subdirectories()["metadata"] == (
+        tmp_path / "somewhere-else" / "artifacts" / "metadata"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# ensure_artifact_dirs
+# --------------------------------------------------------------------------- #
+
+
+def test_ensure_artifact_dirs_creates_every_subdirectory(tmp_path: Path):
+    paths = RepositoryPaths.from_root(tmp_path)
+
+    created = paths.ensure_artifact_dirs()
+
+    assert set(created) == set(ARTIFACT_SUBDIRECTORIES)
+    for path in created.values():
+        assert path.is_dir()
+
+
+def test_ensure_artifact_dirs_is_idempotent(tmp_path: Path):
+    paths = RepositoryPaths.from_root(tmp_path)
+
+    paths.ensure_artifact_dirs()
+    paths.ensure_artifact_dirs()  # must not raise
+
+    assert (paths.artifacts_dir / "videos").is_dir()
+
+
+def test_ensure_artifact_dirs_respects_configured_location(tmp_path: Path):
+    paths = RepositoryPaths.from_config(_StubPaths(tmp_path), tmp_path)
+
+    paths.ensure_artifact_dirs()
+
+    assert (tmp_path / "somewhere-else" / "artifacts" / "frames").is_dir()
+    assert not (tmp_path / "artifacts").exists()

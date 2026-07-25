@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Weekly, for the inference-smoke job only. The extra depends on packages
+    # with a track record of shipping broken metadata; this catches that drift
+    # without taxing every push with a multi-gigabyte install.
+    - cron: "17 6 * * 1"
 
 # CI deliberately installs the *default* environment only -- no `inference`
 # extra. It must never download model weights or PanAf data, never require a
@@ -143,3 +148,50 @@ jobs:
             echo "::error::requirements-colab.txt is stale. Run 'make colab-requirements' and commit."
             exit 1
           fi
+
+  inference-smoke:
+    name: Inference extra actually works
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Scheduled and manual only -- never on push or pull_request. Installing the
+    # extra pulls ~190 packages including torch, which is far too slow to tax
+    # every commit with. Its purpose is catching *upstream* drift: the extra
+    # already carries three workarounds for packages that shipped broken
+    # metadata (undeclared soundfile/librosa, and setuptools 83 removing
+    # pkg_resources from under yolov5). A `uv lock` that resolves proves none of
+    # that still imports.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Sync with the inference extra
+        run: uv sync --frozen --extra inference
+
+      - name: Weights-free smoke test
+        # Downloads no model weights and needs no GPU. Asserts imports, the
+        # MegaDetector API surface, supervision.ByteTrack, NumPy 2.x interop and
+        # an OpenCV/imageio video round-trip.
+        run: uv run python scripts/smoke_inference.py
+
+      - name: Confirm no weights were downloaded
+        run: |
+          if find . -name '*.pt' -o -name '*.pth' | grep -q .; then
+            echo "::error::Model weights appeared in the workspace; CI must not download them."
+            find . -name '*.pt' -o -name '*.pth'
+            exit 1
+          fi
+          echo "No weight files present, as expected."

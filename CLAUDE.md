@@ -6,9 +6,10 @@ The project brain lives in the **Obsidian vault at the repository root** — sta
 [PanAf Command Center](00%20Start%20Here/PanAf%20Command%20Center.md). Run `/start-session` at the
 beginning of a session and `/log-session` at the end.
 
-> **Current phase: Phase 1 "See" — sub-phase 1a (scaffold) complete, 1b (clip selection) next.**
-> No detection has ever been produced by this repository. No dataset has been downloaded, no model
-> weights loaded, no clip annotated.
+> **Current phase: Phase 1 "See" — sub-phase 1a (scaffold) complete and audited, 1b (clip
+> selection) next.** The stack is proven: `make smoke-detect` loads real weights and runs inference
+> end to end. But **no dataset has been downloaded and no clip annotated** — the only frames ever
+> put through the model were synthetic noise, so detection quality is entirely unmeasured.
 
 ## The project
 
@@ -166,8 +167,36 @@ The `inference` extra carries three workarounds, each commented in `pyproject.to
 - `setuptools<81` — PytorchWildlife pulls in `yolov5`, which still does `import pkg_resources`;
   setuptools 83 removed it.
 
-**A successful `uv lock` does not mean the package imports.** After any change to the extra:
-`uv run --extra inference python -c "import PytorchWildlife"`.
+**A successful `uv lock` does not mean the package imports.** After any change to the extra, run
+`make smoke-inference` — imports, ByteTrack, NumPy 2.x interop and a video round-trip, no weights.
+
+### `device=` is ignored — this will bite Phase 1c
+
+`MegaDetectorV6(device="cuda")` stores the value and **never applies it**; the line that would is
+commented out upstream (`yolov8_base._load_model`). The model loads on CPU, nothing raises, and
+`detector.device` still claims CUDA. On Colab that is CPU speed with GPU metadata.
+
+The fix, applied after setup — all three lines are required:
+
+```python
+detector.predictor.model.to(torch_device)  # weights
+detector.predictor.device = torch_device  # inputs (omit -> forward pass crashes)
+detector.predictor.args.device = device  # args
+```
+
+Never record the *requested* device in `RunMetadata` — record what
+`runtime.module_device(detector)` reports. `scripts/smoke_detect.py` is the working reference.
+Full detail: [model docs](docs/model.md).
+
+## Smoke tests
+
+| Command | Downloads weights | Purpose |
+|---|---|---|
+| `make smoke-inference` | no | The extra imports and works. Also a weekly CI job. |
+| `make smoke-detect` | **yes (~1 GB)** | Real weights load and inference runs. Local only. |
+
+Run `make smoke-detect` before the first real clip, so a Phase 1c failure is distinguishable from a
+broken stack.
 
 ## Conventions
 

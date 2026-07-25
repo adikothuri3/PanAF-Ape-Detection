@@ -12,14 +12,47 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 __all__ = [
     "ARTIFACT_SUBDIRECTORIES",
     "REPOSITORY_ROOT_ENV_VAR",
+    "PathsLike",
     "RepositoryPaths",
     "repository_root",
     "resolve_under_root",
 ]
+
+
+@runtime_checkable
+class PathsLike(Protocol):
+    """Structural type for the configured path locations.
+
+    Declared here rather than imported from :mod:`panaf_ape_detection.config` so
+    that this module remains a leaf with no intra-project imports. ``Config.paths``
+    satisfies it.
+    """
+
+    @property
+    def raw_data_dir(self) -> Path:
+        """Immutable, as-obtained dataset files."""
+        ...
+
+    @property
+    def interim_data_dir(self) -> Path:
+        """Derived intermediates such as extracted frames."""
+        ...
+
+    @property
+    def processed_data_dir(self) -> Path:
+        """Analysis-ready derived data."""
+        ...
+
+    @property
+    def artifacts_dir(self) -> Path:
+        """Generated run outputs."""
+        ...
+
 
 REPOSITORY_ROOT_ENV_VAR = "PANAF_REPO_ROOT"
 """Environment variable that, when set, overrides repository-root discovery."""
@@ -130,6 +163,10 @@ class RepositoryPaths:
     def from_root(cls, root: Path | None = None) -> RepositoryPaths:
         """Build the default layout underneath *root*.
 
+        This is the layout of a fresh checkout. It ignores configuration
+        entirely — use :meth:`from_config` for the paths a run will actually
+        use.
+
         Args:
             root: Repository root. Defaults to :func:`repository_root`.
 
@@ -150,6 +187,56 @@ class RepositoryPaths:
             experiments_dir=base / "experiments",
             reports_dir=base / "reports",
         )
+
+    @classmethod
+    def from_config(cls, paths_config: PathsLike, root: Path | None = None) -> RepositoryPaths:
+        """Build the layout a run will actually use, honouring configuration.
+
+        The four data and artifact locations come from configuration; the rest
+        (``configs_dir``, ``docs_dir``, ``experiments_dir``, ``reports_dir``) are
+        properties of the checkout and keep their default positions.
+
+        ``data_dir`` is derived from ``raw_data_dir``'s parent, so a config that
+        relocates the data tree wholesale stays self-consistent.
+
+        Args:
+            paths_config: Any object exposing the four configured path
+                attributes — in practice ``Config.paths``. Typed structurally so
+                this module stays a leaf and never imports the config layer.
+            root: Repository root. Defaults to :func:`repository_root`.
+
+        Returns:
+            A populated :class:`RepositoryPaths` instance.
+        """
+        base = (root or repository_root()).resolve()
+        raw = resolve_under_root(paths_config.raw_data_dir, base)
+        return cls(
+            root=base,
+            configs_dir=base / "configs",
+            data_dir=raw.parent,
+            raw_data_dir=raw,
+            interim_data_dir=resolve_under_root(paths_config.interim_data_dir, base),
+            processed_data_dir=resolve_under_root(paths_config.processed_data_dir, base),
+            artifacts_dir=resolve_under_root(paths_config.artifacts_dir, base),
+            docs_dir=base / "docs",
+            experiments_dir=base / "experiments",
+            reports_dir=base / "reports",
+        )
+
+    def ensure_artifact_dirs(self) -> dict[str, Path]:
+        """Create the artifacts tree and return the created subdirectories.
+
+        Called explicitly by whichever stage is about to write output. It is
+        deliberately **not** called on import or by read-only commands such as
+        ``doctor`` and ``show-paths``, which must leave the filesystem untouched.
+
+        Returns:
+            The ``{name: path}`` mapping of subdirectories, all now existing.
+        """
+        subdirectories = self.artifact_subdirectories()
+        for path in subdirectories.values():
+            path.mkdir(parents=True, exist_ok=True)
+        return subdirectories
 
     def as_mapping(self) -> dict[str, Path]:
         """Return the layout as an ordered ``{name: path}`` mapping."""

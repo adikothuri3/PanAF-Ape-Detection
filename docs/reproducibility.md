@@ -67,9 +67,11 @@ Setting a seed is not the same as achieving determinism (see below).
 
 Schema: `RunMetadata` in [`../src/panaf_ape_detection/types.py`](../src/panaf_ape_detection/types.py).
 
-> **Not yet produced.** No code in this repository currently writes a `RunMetadata` record, because
-> the pipeline is not implemented. The schema is defined now so the inference implementation writes
-> one from its first commit rather than having it bolted on later.
+> **The producer exists; no pipeline calls it yet.**
+> `panaf_ape_detection.provenance.build_run_metadata()` assembles the record and
+> `write_run_metadata()` persists it, both tested. `scripts/smoke_detect.py` produces a real one.
+> What does *not* exist is a pipeline stage that runs inference over clips and writes it — so
+> `artifacts/metadata/` is still empty in normal use.
 
 | Field | Why it is there |
 | --- | --- |
@@ -79,7 +81,7 @@ Schema: `RunMetadata` in [`../src/panaf_ape_detection/types.py`](../src/panaf_ap
 | `config_snapshot` | The fully resolved config, after env overrides |
 | `python_version`, `dependency_versions` | The environment as installed, not as locked |
 | `platform` | OS and version |
-| `device` | The device actually selected, which may differ from `auto` |
+| `device` | The device the weights are **verified** to be on — not the one requested. PyTorch-Wildlife ignores `device=` (see [model.md](model.md)), so the requested value is not evidence. Use `runtime.module_device()`. |
 | `model_name`, `model_variant` | **Which model.** A result without this cannot be reproduced |
 | `confidence_threshold` | A detection count is meaningless without it |
 | `seed` | The seed actually used |
