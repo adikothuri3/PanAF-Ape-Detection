@@ -1,11 +1,18 @@
 version: 2
 
 # Notes on the uv workflow:
-#   * Dependabot updates `pyproject.toml` constraints. It does not regenerate
-#     `uv.lock`. A Dependabot PR that touches pyproject.toml therefore needs
-#     `make lock` run locally (which also refreshes requirements-colab.txt) and
-#     committed to the PR branch, or CI's `lockfile` job will fail. That failure
-#     is intentional -- it is the reminder.
+#   * The Python ecosystem here is `uv`, NOT `pip`. The pip ecosystem treats
+#     `requirements-colab.txt` as a manifest and opens PRs that edit it directly
+#     -- but that file is *generated* from uv.lock, so those PRs create exactly
+#     the second source of truth this project avoids. In practice it produced
+#     PRs bumping transitive pins (nvidia-*, tomlkit) and one raising
+#     `supervision` above the `==0.23.0` that PytorchWildlife requires, which
+#     would not have resolved. The `uv` ecosystem reads pyproject.toml and
+#     uv.lock instead, which is the actual dependency definition.
+#   * Dependabot does not regenerate `requirements-colab.txt`. A Dependabot PR
+#     therefore needs `make colab-requirements` run locally and committed to the
+#     PR branch, or CI's `lockfile` job will fail. That failure is intentional --
+#     it is the reminder.
 #   * The `inference` extra is pinned around known-broken upstream releases
 #     (see the comments in pyproject.toml). Read those before accepting an
 #     update to setuptools, pytorchwildlife, soundfile or librosa.
@@ -25,7 +32,7 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /
     schedule:
       interval: monthly
