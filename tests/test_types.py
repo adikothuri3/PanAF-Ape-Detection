@@ -20,6 +20,7 @@ from panaf_ape_detection.types import (
     InputFileRecord,
     RunMetadata,
     TrackedDetection,
+    TrackedFrameDetections,
     TrackingBackend,
 )
 
@@ -96,16 +97,190 @@ def test_tracked_detection_behavior_label_defaults_to_none():
     assert tracked.behavior_label is None
 
 
-def test_frame_detections_defaults_to_empty():
-    frame = FrameDetections(clip_id="clip-a", frame_index=0)
+def frame(**overrides: object) -> FrameDetections:
+    values: dict[str, object] = {
+        "clip_id": "clip-a",
+        "frame_index": 0,
+        "frame_width": 1280,
+        "frame_height": 720,
+    }
+    values.update(overrides)
+    return FrameDetections(**values)  # type: ignore[arg-type]
 
-    assert frame.detections == []
-    assert frame.timestamp_seconds is None
+
+def test_frame_detections_defaults_to_empty():
+    detections = frame()
+
+    assert detections.detections == []
+    assert detections.timestamp_seconds is None
 
 
 def test_frame_detections_rejects_negative_index():
     with pytest.raises(ValidationError, match="frame_index"):
-        FrameDetections(clip_id="clip-a", frame_index=-1)
+        frame(frame_index=-1)
+
+
+# --------------------------------------------------------------------------- #
+# Frame dimensions -- a serialized record must be interpretable on its own,
+# without re-opening the source video.
+# --------------------------------------------------------------------------- #
+
+
+def test_frame_dimensions_are_required():
+    """Without them, boxes cannot be normalised or bounds-checked after the fact."""
+    with pytest.raises(ValidationError, match="frame_width"):
+        FrameDetections(clip_id="clip-a", frame_index=0)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(("width", "height"), [(0, 720), (1280, 0), (-1, 720)])
+def test_frame_dimensions_must_be_positive(width: int, height: int):
+    with pytest.raises(ValidationError):
+        frame(frame_width=width, frame_height=height)
+
+
+def test_relative_area_is_scale_free():
+    """The measure that makes 'small distant subjects' testable across resolutions."""
+    small = box(x_min=0, y_min=0, x_max=128, y_max=72)
+
+    assert small.relative_area(1280, 720) == pytest.approx(0.01)
+    # The same fraction of a smaller frame gives the same answer.
+    assert box(x_min=0, y_min=0, x_max=64, y_max=36).relative_area(640, 360) == pytest.approx(0.01)
+
+
+def test_relative_area_rejects_nonpositive_frames():
+    with pytest.raises(ValueError, match="must be positive"):
+        box().relative_area(0, 720)
+
+
+def test_is_within_frame():
+    assert box(x_min=0, y_min=0, x_max=100, y_max=100).is_within(1280, 720)
+    assert not box(x_min=0, y_min=0, x_max=2000, y_max=100).is_within(1280, 720)
+
+
+def test_relative_areas_for_a_frame():
+    detections = frame(
+        detections=[
+            Detection(
+                box=box(x_min=0, y_min=0, x_max=128, y_max=72),
+                confidence=0.5,
+                category_id=0,
+                category_name="animal",
+            )
+        ]
+    )
+
+    assert detections.relative_areas() == [pytest.approx(0.01)]
+
+
+def test_box_outside_the_declared_frame_is_rejected():
+    """A box escaping the frame means the producer is wrong -- fail at construction."""
+    oversized = Detection(
+        box=box(x_min=0, y_min=0, x_max=2000, y_max=100),
+        confidence=0.5,
+        category_id=0,
+        category_name="animal",
+    )
+
+    with pytest.raises(ValidationError, match="outside the declared"):
+        frame(detections=[oversized])
+
+
+# --------------------------------------------------------------------------- #
+# TrackedFrameDetections
+#
+# Regression guard for a verified data-loss bug: pydantic serializes to the
+# *declared* field type, so tracked detections stored in a plain
+# FrameDetections (list[Detection]) lost track_id and behavior_label on write.
+# --------------------------------------------------------------------------- #
+
+
+def tracked(**overrides: object) -> TrackedDetection:
+    values: dict[str, object] = {
+        "box": box(),
+        "confidence": 0.8,
+        "category_id": 0,
+        "category_name": "animal",
+        "track_id": 7,
+        "behavior_label": "climbing up",
+    }
+    values.update(overrides)
+    return TrackedDetection(**values)  # type: ignore[arg-type]
+
+
+def test_track_identity_survives_serialization():
+    """The exact assertion that fails against a plain FrameDetections."""
+    frame_detections = TrackedFrameDetections(
+        clip_id="clip-a",
+        frame_index=3,
+        frame_width=1280,
+        frame_height=720,
+        detections=[tracked()],
+    )
+
+    dumped = frame_detections.model_dump()["detections"][0]
+
+    assert "track_id" in dumped
+    assert "behavior_label" in dumped
+    assert dumped["track_id"] == 7
+    assert dumped["behavior_label"] == "climbing up"
+
+
+def test_track_identity_survives_a_json_round_trip():
+    original = TrackedFrameDetections(
+        clip_id="clip-a",
+        frame_index=3,
+        frame_width=1280,
+        frame_height=720,
+        detections=[tracked(track_id=11, behavior_label="hanging")],
+    )
+
+    restored = TrackedFrameDetections.model_validate_json(original.model_dump_json())
+
+    assert restored == original
+    assert restored.detections[0].track_id == 11
+    assert restored.detections[0].behavior_label == "hanging"
+
+
+def test_plain_frame_detections_still_drops_identity():
+    """Documents *why* TrackedFrameDetections exists, so nobody 'simplifies' it away."""
+    frame_detections = FrameDetections(
+        clip_id="clip-a",
+        frame_index=0,
+        frame_width=1280,
+        frame_height=720,
+        detections=[tracked()],
+    )
+
+    dumped = frame_detections.model_dump()["detections"][0]
+
+    assert "track_id" not in dumped
+    assert "behavior_label" not in dumped
+
+
+def test_track_ids_collects_distinct_identities():
+    frame_detections = TrackedFrameDetections(
+        clip_id="clip-a",
+        frame_index=0,
+        frame_width=1280,
+        frame_height=720,
+        detections=[tracked(track_id=1), tracked(track_id=2), tracked(track_id=1)],
+    )
+
+    assert frame_detections.track_ids() == {1, 2}
+
+
+def test_tracked_frame_rejects_plain_detections():
+    """A detection with no identity must not slip into a tracked record."""
+    plain = Detection(box=box(), confidence=0.5, category_id=0, category_name="animal")
+
+    with pytest.raises(ValidationError, match="TrackedDetection"):
+        TrackedFrameDetections(
+            clip_id="clip-a",
+            frame_index=0,
+            frame_width=1280,
+            frame_height=720,
+            detections=[plain],  # type: ignore[list-item]
+        )
 
 
 def test_input_file_record_requires_a_sha256():

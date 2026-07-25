@@ -64,6 +64,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "src/panaf_ape_detection/__init__.py",
     "src/panaf_ape_detection/cli.py",
     "src/panaf_ape_detection/config.py",
+    "src/panaf_ape_detection/manifest.py",
     "src/panaf_ape_detection/paths.py",
     "src/panaf_ape_detection/provenance.py",
     "src/panaf_ape_detection/py.typed",
@@ -71,9 +72,13 @@ REQUIRED_FILES: tuple[str, ...] = (
     "src/panaf_ape_detection/types.py",
     "tests/test_cli.py",
     "tests/test_config.py",
+    "tests/test_manifest.py",
     "tests/test_paths.py",
     "tests/test_provenance.py",
     "tests/test_runtime.py",
+    "tests/test_smoke_detect.py",
+    "tests/test_types.py",
+    "tests/test_verify_repository.py",
     # Claude Code integration
     ".claude/settings.json",
     ".claude/hooks/ruff-check.sh",
@@ -342,19 +347,17 @@ def check_manifest_example_has_no_real_data() -> None:
         fail("data/sample_manifest.example.csv is empty")
         return
 
+    # Single source of truth: the package owns the column order, so the template,
+    # data/README.md and this check cannot drift apart.
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        from panaf_ape_detection.manifest import MANIFEST_COLUMNS
+    except ImportError as exc:
+        fail(f"cannot import panaf_ape_detection.manifest: {exc}")
+        return
+
     header = lines[0].split(",")
-    expected = [
-        "clip_id",
-        "split",
-        "video_filename",
-        "annotation_filename",
-        "species",
-        "site",
-        "selected_reason",
-        "video_sha256",
-        "annotation_sha256",
-        "notes",
-    ]
+    expected = list(MANIFEST_COLUMNS)
     if header != expected:
         fail(f"data/sample_manifest.example.csv header is {header}, expected {expected}")
 

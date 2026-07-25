@@ -92,6 +92,12 @@ Schema: `RunMetadata` in [`../src/panaf_ape_detection/types.py`](../src/panaf_ap
 Note `inputs` stores **filenames only**, not absolute paths — metadata should not leak local
 directory structure or reveal more of the dataset layout than necessary.
 
+Detection records are separately self-describing: `FrameDetections` carries `frame_width` and
+`frame_height`, so a saved result can be normalised, bounds-checked and compared against a clip of a
+different resolution **without the source video**. Tracked results must use
+`TrackedFrameDetections`, or identities and behaviour labels are dropped on write — see
+[`architecture.md`](architecture.md).
+
 ### 8. Hardware is documented
 
 Device, OS and machine architecture go in run metadata; `panaf-phase1 doctor` reports the same for

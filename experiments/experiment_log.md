@@ -311,3 +311,115 @@ through OpenCV and imageio, GIF export works, and real weights load and run.
 Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `docs/dataset.md`, populate
 `data/sample_manifest.csv` with checksums (`provenance.file_sha256` now computes them), then
 implement `data/manifest.py` before `data/video.py`, tested against synthetic video.
+
+---
+
+## 2026-07-25 — Full codebase audit
+
+**Objective**
+Audit the entire repository, not just the inference path, to confirm it is a sound base for
+continuing research.
+
+**Hypothesis / question**
+The gates are green and the stack is proven, but green gates only cover what they check. What is
+wrong in the parts nothing checks — the schemas, the docs, the guards themselves?
+
+**Environment**
+- Machine / OS: macOS (Darwin 25.5.0), arm64, Apple M1
+- Device: MPS available, no CUDA
+- Python: 3.11.15
+- Commit: cd3c9f6 (working tree dirty throughout)
+
+**Data / clip IDs**
+**None.** No dataset was accessed. Synthetic frames and synthetic trees only.
+
+**Model and variant**
+`MegaDetectorV6` / `MDV6-yolov9-c`, threshold 0.2 — loaded once via the new opt-in weights test, on
+a synthetic noise frame.
+
+**Configuration**
+`configs/base.yaml`, unmodified.
+
+**Commands run**
+```bash
+uv run ruff check . && uv run mypy src && uv run pytest && uv run python scripts/verify_repository.py
+uv run pytest -m weights --collect-only          # before: collected nothing
+uv run --extra inference pytest -m weights       # after: 2 passed
+make smoke-inference && make smoke-detect
+```
+
+**Observations**
+
+One data-loss bug and six smaller defects.
+
+1. **Serialization dropped track identity.** `FrameDetections.detections` was annotated
+   `list[Detection]`. A `TrackedDetection` survived *in memory* — pydantic keeps the subclass — but
+   `model_dump()` serializes to the **declared** type. Verified: dumped keys were
+   `['box', 'category_id', 'category_name', 'confidence']`. Track ids and behaviour labels, which
+   are the entire Phase 1d/1e deliverable, would have been destroyed on write with no error.
+2. **Detection records were not self-describing.** No frame dimensions anywhere, so a saved record
+   could not be normalised or bounds-checked without re-opening the video. This blocked "small
+   distant subjects", a failure axis `docs/model.md` names, since measuring it needs box area
+   *relative to frame area*.
+3. **The Colab notebook predated the runtime layer** and never mentioned the device bug — despite
+   Colab being exactly where that bug costs most.
+4. **The `weights` marker was registered and documented but unused**; `pytest -m weights` collected
+   nothing.
+5. **Manifest columns were defined in three places** with nothing keeping them in sync.
+6. **`scripts/verify_repository.py` (668 lines) had no tests.**
+7. `filterwarnings` module patterns were misleading — the third field matches the module that
+   *raises* the warning, often not the one named.
+
+**Quantitative results**
+- Tests 128 → 190 (plus 2 opt-in weights tests). Verification checks: 18, now themselves tested.
+- 37 Markdown files scanned for broken relative links: the only hit is a deliberate placeholder
+  inside an HTML comment in the write-up template.
+- No TODO/FIXME in `src/`. Every `config` field is unread outside `config.py`, which is correct —
+  the pipeline does not exist yet, and it confirms nothing is mis-wired.
+
+Software metrics only. **Detection quality remains entirely unmeasured.**
+
+**Qualitative results**
+`TrackedFrameDetections` now round-trips through JSON with `track_id` and `behavior_label` intact,
+proven by a test that fails against the old schema.
+
+**Failures and dead ends**
+
+- First fix for the serialization bug overrode `detections: list[TrackedDetection]`. mypy rejected
+  it — correctly. `list` is invariant, so code holding the object as a `FrameDetections` could
+  append a plain `Detection` into a tracked frame, and pydantic does not validate `.append()`.
+  Changed the base field to `Sequence[Detection]`; the read-only interface makes the override sound
+  and blocks the mutation. Runtime container is still `list`.
+- Writing the weights test immediately exposed a **fourth upstream bug**: `thop`, pulled in by
+  `yolov5`, pulled in by PytorchWildlife, calls `distutils.version.LooseVersion` at import. Under
+  pytest's `filterwarnings = ["error"]` that `DeprecationWarning` becomes a hard error, so the
+  entire inference stack could not be imported *from a test at all* — while working fine as a
+  script. This is exactly the latent risk noted as finding 7, and it bit within minutes of there
+  being a test to bite.
+- My first `test_tracked_frame_rejects_plain_detections` asserted the error mentions `track_id`; it
+  actually names `TrackedDetection`. Behaviour was right, assertion was wrong.
+
+**Exact errors**
+```text
+error: Incompatible types in assignment (expression has type "list[TrackedDetection]",
+base class "FrameDetections" defined the type as "list[Detection]")
+note: Consider using "Sequence" instead, which is covariant
+
+DeprecationWarning: distutils Version classes are deprecated. Use packaging.version instead.
+  .venv/lib/python3.11/site-packages/thop/profile.py:12: in <module>
+    if LooseVersion(torch.__version__) < LooseVersion("1.0.0"):
+```
+
+**Interpretation**
+Every defect this audit found was silent. The schema accepted data and dropped part of it; the
+marker was registered and selected nothing; the guards were unguarded. That is the same pattern as
+the previous audit (a value accepted, stored, then not used), which suggests it is the failure mode
+this codebase is prone to, and that "it ran without error" is the weakest possible evidence here.
+
+The variance error is worth remembering: mypy caught a real correctness hole that no test would
+have, because the unsound path required `.append()` on a downcast reference.
+
+**Next action**
+Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `docs/dataset.md`, fill
+`data/sample_manifest.csv` (schema now in `manifest.py`, digests from `provenance.file_sha256`),
+then implement `data/manifest.py` loading before `data/video.py`, tested against synthetic video.

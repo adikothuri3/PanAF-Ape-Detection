@@ -13,14 +13,21 @@ will import their heavy dependencies lazily, inside functions.
 from __future__ import annotations
 
 from panaf_ape_detection.config import Config, load_config
+from panaf_ape_detection.manifest import MANIFEST_COLUMNS, ManifestRow
 from panaf_ape_detection.paths import RepositoryPaths, repository_root
-from panaf_ape_detection.runtime import resolve_device, set_seeds
+from panaf_ape_detection.provenance import build_run_metadata, file_sha256
+from panaf_ape_detection.runtime import module_device, resolve_device, set_seeds
 
 __all__ = [
+    "MANIFEST_COLUMNS",
     "Config",
+    "ManifestRow",
     "RepositoryPaths",
     "__version__",
+    "build_run_metadata",
+    "file_sha256",
     "load_config",
+    "module_device",
     "repository_root",
     "resolve_device",
     "set_seeds",

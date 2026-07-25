@@ -176,12 +176,21 @@ markers = [
 ]
 filterwarnings = [
     "error",
-    # torch, ultralytics and their dependencies emit deprecation warnings on
-    # import that are not ours to fix and must not fail an opt-in smoke test.
-    "default::DeprecationWarning:torch.*",
-    "default::DeprecationWarning:ultralytics.*",
-    "default::DeprecationWarning:PytorchWildlife.*",
-    "default::UserWarning:torch.*",
+    # Matched by *message*, not by module. A filterwarnings entry's third field
+    # is a regex against the module where the warning is **raised**, which for
+    # warnings emitted from C extensions or re-exported at import time is very
+    # often not the package you named -- so `...:torch.*` looks correct and
+    # silently fails to match. These are the concrete warnings the inference
+    # stack emits on import; none originate in this project's code.
+    "default:pkg_resources is deprecated as an API:UserWarning",
+    "default:Deprecated call to `pkg_resources:DeprecationWarning",
+    # `thop`, pulled in by yolov5, pulled in by PytorchWildlife, calls
+    # distutils.version.LooseVersion at import time. Without this the whole
+    # inference stack cannot be imported *from a test at all* -- it works as a
+    # plain script and dies under pytest, which is a confusing way to find out.
+    "default:distutils Version classes are deprecated:DeprecationWarning",
+    "default:datetime.datetime.utcfromtimestamp:DeprecationWarning",
+    "default:builtin type (SwigPyPacked|SwigPyObject|swigvarlink) has no __module__:DeprecationWarning",
 ]
 
 [tool.coverage.run]

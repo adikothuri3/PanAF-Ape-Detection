@@ -16,9 +16,9 @@ updated: 2026-07-24
 
 🟡 **Infrastructure audited and proven. No detection has been run on real footage.**
 
-The environment, typed config, runtime layer, setup CLI, tests, CI and documentation are in place
-and green (128 tests, 18 verification checks, CI passing on `main`). The repo is published at
-[adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
+The environment, typed config, runtime layer, schemas, setup CLI, tests, CI and documentation are in
+place and green (**190 tests, 18 verification checks**, CI passing on `main`). The repo is published
+at [adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
 
 The stack is now **proven, not assumed**: `make smoke-detect` loads real `MDV6-yolov9-c` weights and
 runs inference end to end, and `make smoke-inference` checks imports, ByteTrack, NumPy 2.x interop
@@ -143,6 +143,10 @@ runs ruff on edited Python only — the full gate stays manual.
   under the locked NumPy 2.x.
 - Detection **quality is entirely unmeasured** — the only frames run through the model were
   synthetic noise.
+- **Tracked results must use `TrackedFrameDetections`.** A plain `FrameDetections` silently drops
+  `track_id` and `behavior_label` on write; see [architecture](../docs/architecture.md).
+- Manifest **loading and checksum verification** are not implemented — `manifest.py` is the schema
+  only. `provenance.file_sha256()` computes the digests in the meantime.
 - No code licence selected; the repo is public under default copyright. See
   [licensing](../docs/licensing.md).
 

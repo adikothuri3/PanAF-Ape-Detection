@@ -1,9 +1,26 @@
 # Architecture
 
 **Status: partly implemented.** The foundation — `config.py`, `paths.py`, `types.py`, `runtime.py`,
-`provenance.py` and `cli.py` — exists and is tested. Every stage module below (`data/`,
-`inference/`, `tracking/`, `visualization/`, `evaluation/`, `pipeline/`) is still a design, marked
-`[planned]`, so that the next implementation task has a target rather than a blank page.
+`provenance.py`, `manifest.py` and `cli.py` — exists and is tested. Every stage module below
+(`data/`, `inference/`, `tracking/`, `visualization/`, `evaluation/`, `pipeline/`) is still a
+design, marked `[planned]`, so that the next implementation task has a target rather than a blank
+page.
+
+## Two schema rules that are easy to get wrong
+
+Both are enforced by `types.py` and covered by regression tests, because both failed silently before
+they were caught:
+
+1. **Tracked results use `TrackedFrameDetections`, never `FrameDetections`.** pydantic serializes to
+   the *declared* field type. Storing `TrackedDetection` objects in a `FrameDetections`, whose field
+   is `Sequence[Detection]`, keeps the subclass in memory but drops `track_id` and `behavior_label`
+   on `model_dump()` — destroying the Phase 1d/1e deliverable the moment it is written to disk, with
+   no error. The field is `Sequence`, not `list`, so the subclass override is type-safe and nothing
+   can append an untracked detection into a tracked frame.
+2. **Detection records carry frame dimensions.** Boxes are absolute pixels, so without
+   `frame_width` / `frame_height` a saved record cannot be normalised, bounds-checked, or compared
+   across resolutions without re-opening the video. `BoundingBox.relative_area()` is what makes
+   "small distant subjects" — a failure axis named in [`model.md`](model.md) — measurable at all.
 
 ## Principle
 
@@ -24,6 +41,8 @@ src/panaf_ape_detection/
 ├── paths.py            Repository-root discovery and the canonical layout.
 ├── types.py            Shared schemas: Detection, TrackedDetection, RunMetadata.
 ├── config.py           Typed YAML configuration.
+├── manifest.py         Clip-manifest schema. Canonical column order; loading is
+│                       Phase 1b.
 ├── runtime.py          Device resolution, seeding, and verifying where weights
 │                       actually live. Lazy torch imports only.
 ├── provenance.py       Checksums, git state, dependency versions, and the one

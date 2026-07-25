@@ -13,6 +13,7 @@ tasks all agree on one schema, and so that the reproducibility contract in
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -28,6 +29,7 @@ __all__ = [
     "InputFileRecord",
     "RunMetadata",
     "TrackedDetection",
+    "TrackedFrameDetections",
     "TrackingBackend",
 ]
 
@@ -105,6 +107,41 @@ class BoundingBox(_StrictModel):
         """Box area in square pixels."""
         return self.width * self.height
 
+    def relative_area(self, frame_width: int, frame_height: int) -> float:
+        """Return the box area as a fraction of the frame area.
+
+        The scale-free measure of subject size. ``docs/model.md`` names
+        "distant / small subjects" as an expected failure condition, and testing
+        that requires comparing box size *relative to the frame* — absolute
+        pixel area is meaningless across clips of different resolutions.
+
+        Args:
+            frame_width: Frame width in pixels.
+            frame_height: Frame height in pixels.
+
+        Returns:
+            Area fraction in ``(0, 1]`` for a box inside the frame.
+
+        Raises:
+            ValueError: If either dimension is not positive.
+        """
+        if frame_width <= 0 or frame_height <= 0:
+            msg = f"frame dimensions must be positive, got {frame_width}x{frame_height}"
+            raise ValueError(msg)
+        return self.area / (frame_width * frame_height)
+
+    def is_within(self, frame_width: int, frame_height: int) -> bool:
+        """Return whether the box lies entirely inside the given frame.
+
+        Args:
+            frame_width: Frame width in pixels.
+            frame_height: Frame height in pixels.
+
+        Returns:
+            ``True`` when every edge is inside the frame bounds.
+        """
+        return self.x_max <= frame_width and self.y_max <= frame_height
+
 
 class Detection(_StrictModel):
     """A single detector output for one frame.
@@ -139,17 +176,80 @@ class TrackedDetection(Detection):
 class FrameDetections(_StrictModel):
     """All detections for one frame of one clip.
 
+    Carries the frame dimensions so that a serialized record is **self-describing**:
+    boxes are absolute pixels, so without the frame size a saved result cannot be
+    normalised, bounds-checked, or compared against a clip of another resolution
+    without re-opening the source video.
+
     Attributes:
         clip_id: Manifest identifier of the source clip.
         frame_index: Zero-based index into the decoded frame sequence.
+        frame_width: Frame width in pixels.
+        frame_height: Frame height in pixels.
         timestamp_seconds: Presentation timestamp of the frame, when known.
         detections: Detections surviving the configured confidence threshold.
     """
 
     clip_id: str = Field(min_length=1)
     frame_index: int = Field(ge=0)
+    frame_width: int = Field(gt=0)
+    frame_height: int = Field(gt=0)
     timestamp_seconds: float | None = Field(default=None, ge=0.0)
-    detections: list[Detection] = Field(default_factory=list)
+    # `Sequence`, not `list`: `list` is invariant, so a `list[TrackedDetection]`
+    # override in the subclass below would be unsound -- code holding this as a
+    # `FrameDetections` could append a plain `Detection` into a tracked frame,
+    # and pydantic does not validate `.append()`. The read-only interface makes
+    # the override type-safe and blocks that mutation.
+    detections: Sequence[Detection] = Field(default_factory=list)
+
+    def model_post_init(self, _context: object, /) -> None:
+        """Reject any detection whose box escapes the declared frame.
+
+        A box outside the frame means whatever produced it is wrong — a bad
+        coordinate convention, a resize that was not applied, a stale frame size.
+        Catching that at construction is far cheaper than finding it in a figure
+        weeks later.
+        """
+        for index, detection in enumerate(self.detections):
+            if not detection.box.is_within(self.frame_width, self.frame_height):
+                msg = (
+                    f"detection {index} of clip {self.clip_id!r} frame {self.frame_index} "
+                    f"has a box extending to ({detection.box.x_max}, {detection.box.y_max}), "
+                    f"outside the declared {self.frame_width}x{self.frame_height} frame"
+                )
+                raise ValueError(msg)
+
+    def relative_areas(self) -> list[float]:
+        """Return each detection's box area as a fraction of the frame."""
+        return [
+            detection.box.relative_area(self.frame_width, self.frame_height)
+            for detection in self.detections
+        ]
+
+
+class TrackedFrameDetections(FrameDetections):
+    """One frame's detections after tracking, with identities preserved.
+
+    This class exists because of a real data-loss trap. pydantic serializes to
+    the **declared** field type: storing ``TrackedDetection`` objects in
+    :class:`FrameDetections`, whose field is ``list[Detection]``, keeps the
+    subclass in memory but silently drops ``track_id`` and ``behavior_label`` on
+    ``model_dump()``. The identities and behaviour labels — the Phase 1d/1e
+    deliverable — would vanish the moment results were written to disk, with no
+    error.
+
+    Anything holding tracked results must use this type, not its parent.
+
+    Attributes:
+        detections: Detections carrying tracker identities and, where the
+            dataset provides one, a behaviour label.
+    """
+
+    detections: Sequence[TrackedDetection] = Field(default_factory=list)
+
+    def track_ids(self) -> set[int]:
+        """Return the distinct tracker identities present in this frame."""
+        return {detection.track_id for detection in self.detections}
 
 
 class InputFileRecord(_StrictModel):
