@@ -481,7 +481,7 @@ threadpoolctl==3.6.0
     # via scikit-learn
 timm==1.0.28
     # via pytorchwildlife
-tomlkit==0.14.0
+tomlkit==0.15.1
     # via gradio
 torch==2.13.0
     # via
