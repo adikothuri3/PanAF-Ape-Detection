@@ -1,0 +1,178 @@
+[project]
+name = "panaf-ape-detection"
+version = "0.1.0"
+description = "Phase 1 (See): pretrained MegaDetector V6 inference over PanAf500 great-ape camera-trap clips."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+authors = [{ name = "Aditya Kothuri" }]
+keywords = [
+    "computer-vision",
+    "camera-trap",
+    "wildlife",
+    "megadetector",
+    "panaf",
+    "great-apes",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Private :: Do Not Upload",
+]
+
+# Core dependencies are deliberately lightweight: the CLI, configuration
+# loading and the test suite must work without any ML stack installed.
+dependencies = [
+    "pydantic>=2.9,<3",
+    "typer>=0.15,<1",
+    "rich>=13.9",
+    "pyyaml>=6.0.2",
+]
+
+[project.optional-dependencies]
+# Heavy computer-vision stack. Installed explicitly with `uv sync --extra inference`.
+# `supervision` is intentionally left unpinned here because PytorchWildlife pins it
+# exactly; letting the resolver decide avoids a conflicting second source of truth.
+inference = [
+    "pytorchwildlife>=1.2,<2",
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "opencv-python-headless>=4.10",
+    "supervision",
+    "imageio[ffmpeg]>=2.35",
+    "tqdm>=4.66",
+    # Workaround for an upstream packaging bug in PytorchWildlife 1.3.0:
+    # `PytorchWildlife/__init__.py` eagerly imports its `bioacoustics` subpackage,
+    # which imports `soundfile` and `librosa` at module level -- but neither is
+    # declared as a dependency. Without these, `import PytorchWildlife` fails with
+    # ModuleNotFoundError even though this project never touches audio.
+    # Remove once upstream declares them or defers the import.
+    "soundfile>=0.12",
+    "librosa>=0.10",
+    # PytorchWildlife pulls in `yolov5`, whose `utils/general.py` still does
+    # `import pkg_resources`. setuptools 81 deprecated and 83 removed that module,
+    # so an unconstrained resolve installs a setuptools that breaks the import
+    # chain. Pin below the removal until yolov5 stops using pkg_resources.
+    "setuptools<81",
+]
+
+[project.urls]
+Homepage = "https://github.com/adiKothuri/panaf-ape-detection"
+Documentation = "https://github.com/adiKothuri/panaf-ape-detection/tree/main/docs"
+
+[project.scripts]
+panaf-phase1 = "panaf_ape_detection.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "types-PyYAML>=6.0.12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/panaf_ape_detection"]
+
+# --------------------------------------------------------------------------- #
+# Tooling
+# --------------------------------------------------------------------------- #
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez (naive datetimes are a reproducibility hazard)
+    "PTH",  # flake8-use-pathlib
+    "SIM",  # flake8-simplify
+    "RET",  # flake8-return
+    "ARG",  # flake8-unused-arguments
+    "TID",  # flake8-tidy-imports
+    "D",    # pydocstyle
+    "ANN",  # flake8-annotations
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "D107",   # __init__ docstring; class docstring is enough
+    "D203",   # incompatible with D211
+    "D213",   # incompatible with D212
+    "ANN401", # allow typing.Any where genuinely needed
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D103", "ANN201", "ANN001"]
+"scripts/*" = ["T201"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+strict = true
+warn_unreachable = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_reexport = true
+show_error_codes = true
+pretty = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# The `inference` extra is not installed in the default or CI environment, so
+# mypy cannot see these packages. Only modules actually imported by `src/` are
+# listed; extend this list (torchvision, PytorchWildlife, cv2, supervision,
+# imageio, ...) as the pipeline modules land, so that `warn_unused_configs`
+# keeps the list honest.
+module = ["torch.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=panaf_ape_detection",
+    "--cov-report=term-missing",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/panaf_ape_detection"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

@@ -1,0 +1,201 @@
+# --------------------------------------------------------------------------- #
+# Python
+# --------------------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+sdist/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --------------------------------------------------------------------------- #
+# Virtual environments
+# --------------------------------------------------------------------------- #
+.venv/
+venv/
+env/
+ENV/
+.conda/
+.uv/
+
+# --------------------------------------------------------------------------- #
+# Testing, coverage and type-checker caches
+# --------------------------------------------------------------------------- #
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+.hypothesis/
+junit*.xml
+
+# --------------------------------------------------------------------------- #
+# Local environment and secrets
+# --------------------------------------------------------------------------- #
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.yaml
+service-account*.json
+
+# --------------------------------------------------------------------------- #
+# Model weights and checkpoints -- never committed. Weights are redistributed
+# under their own licence; see docs/licensing.md.
+# --------------------------------------------------------------------------- #
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+*.h5
+*.hdf5
+*.ckpt
+*.safetensors
+*.bin
+# Root-anchored so they cannot shadow a future source package of the same name.
+/weights/
+/checkpoints/
+/models/
+
+# --------------------------------------------------------------------------- #
+# Dataset files -- video, imagery and extracted frames. Never committed.
+# See data/README.md.
+# --------------------------------------------------------------------------- #
+data/**
+!data/README.md
+!data/sample_manifest.example.csv
+!data/raw/
+!data/interim/
+!data/processed/
+!data/**/.gitkeep
+
+# Your actual clip selection reveals dataset contents; only the template is tracked.
+data/sample_manifest.csv
+
+# Media formats, wherever they end up
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+*.mpg
+*.mpeg
+*.gif
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.bmp
+*.webp
+*.npy
+*.npz
+# Documentation figures are tracked deliberately, once they exist.
+!docs/**/*.png
+!docs/**/*.svg
+
+# --------------------------------------------------------------------------- #
+# Generated artifacts -- everything, always. Regenerate, never commit.
+# --------------------------------------------------------------------------- #
+artifacts/
+outputs/
+output/
+results/
+runs/
+logs/
+*.log
+
+# --------------------------------------------------------------------------- #
+# Common ML experiment-tracking directories
+# --------------------------------------------------------------------------- #
+mlruns/
+wandb/
+lightning_logs/
+tensorboard/
+tb_logs/
+.neptune/
+catboost_info/
+ultralytics/
+*.pkl
+
+# --------------------------------------------------------------------------- #
+# Notebooks
+# --------------------------------------------------------------------------- #
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*-checkpoint.ipynb
+
+# --------------------------------------------------------------------------- #
+# Profiling
+# --------------------------------------------------------------------------- #
+*.prof
+*.lprof
+*.pstats
+prof/
+.profile/
+perf.data*
+*.nvvp
+*.qdrep
+*.nsys-rep
+
+# --------------------------------------------------------------------------- #
+# Editors and IDEs
+# --------------------------------------------------------------------------- #
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+.ropeproject
+*.sublime-workspace
+*.sublime-project
+
+# --------------------------------------------------------------------------- #
+# Operating system
+# --------------------------------------------------------------------------- #
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --------------------------------------------------------------------------- #
+# Explicitly tracked, in case a broad rule above ever matches them.
+# uv.lock in particular MUST be committed -- it is the reproducibility contract.
+# --------------------------------------------------------------------------- #
+!.gitkeep
+!uv.lock
+!requirements-colab.txt
+!reports/**/*.md
+!configs/*.yaml

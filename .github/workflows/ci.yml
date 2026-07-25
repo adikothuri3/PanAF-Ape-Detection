@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# CI deliberately installs the *default* environment only -- no `inference`
+# extra. It must never download model weights or PanAf data, never require a
+# GPU, and never execute notebooks. If a change makes CI need any of those,
+# the change is wrong, not the workflow.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Fail fast rather than silently resolving something not in the lockfile.
+  UV_FROZEN: "1"
+
+jobs:
+  quality:
+    name: Lint, type-check and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync the locked environment (no inference extra)
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy src
+
+      - name: pytest with coverage
+        run: uv run pytest --cov-report=xml --cov-report=term-missing
+
+      - name: Verify repository invariants
+        run: uv run python scripts/verify_repository.py
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  cli-smoke:
+    name: CLI works without the inference extra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # A contributor who has only run `uv sync` must still be able to use the
+    # basic CLI. This job is what keeps that true.
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync the locked environment (no inference extra)
+        run: uv sync --frozen
+
+      - name: panaf-phase1 doctor
+        run: uv run panaf-phase1 doctor
+
+      - name: panaf-phase1 show-paths
+        run: uv run panaf-phase1 show-paths
+
+      - name: panaf-phase1 validate-config (base)
+        run: uv run panaf-phase1 validate-config --config configs/base.yaml
+
+      - name: panaf-phase1 validate-config (colab)
+        run: uv run panaf-phase1 validate-config --config configs/colab.yaml
+
+      - name: Standalone environment check script
+        run: uv run python scripts/check_environment.py
+
+  lockfile:
+    name: Lockfile and Colab export are current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: uv.lock matches pyproject.toml
+        run: uv lock --check
+
+      - name: requirements-colab.txt matches uv.lock
+        run: |
+          uv export --extra inference --no-hashes --no-dev \
+            --format requirements-txt -o /tmp/requirements-colab.txt
+          if ! diff -u requirements-colab.txt /tmp/requirements-colab.txt; then
+            echo "::error::requirements-colab.txt is stale. Run 'make colab-requirements' and commit."
+            exit 1
+          fi

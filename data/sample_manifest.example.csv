@@ -1,0 +1,2 @@
+clip_id,split,video_filename,annotation_filename,species,site,selected_reason,video_sha256,annotation_sha256,notes
+EXAMPLE_PLACEHOLDER_ROW_DELETE_ME,<split-from-dataset>,<video-filename>,<annotation-filename>,<species-from-dataset>,<site-from-dataset>,<why you picked this clip: e.g. night-time infrared, tests low-light failure>,<64-hex-sha256-of-video>,<64-hex-sha256-of-annotation>,<anything odd about this clip>

@@ -1,0 +1,154 @@
+cff-version: 1.2.0
+message: >-
+  If you use this repository, please cite it. More importantly, cite the
+  underlying dataset and models -- they are the substantive contributions.
+  See references.bib.
+
+title: panaf-ape-detection
+abstract: >-
+  Phase 1 ("See") research scaffold for detecting great apes in wild camera-trap
+  video by running the pretrained MegaDetector V6 detector, via Microsoft
+  PyTorch-Wildlife, over a small hand-selected sample of clips from the PanAf500
+  subset of the PanAf20K dataset. No fine-tuning is performed. The detection,
+  tracking and annotation pipeline is not implemented at this version; this
+  release is the repository scaffold, typed configuration, setup CLI and locked
+  environment.
+
+type: software
+version: 0.1.0
+date-released: "2026-07-24"
+
+# Add collaborators by appending entries to this list. Order is authorship order.
+# Optional fields per author: email, affiliation, orcid.
+authors:
+  - family-names: Kothuri
+    given-names: Aditya
+  # - family-names: <family name>
+  #   given-names: <given name>
+  #   affiliation: <institution>
+  #   orcid: "https://orcid.org/0000-0000-0000-0000"
+
+keywords:
+  - computer vision
+  - camera trap
+  - wildlife conservation
+  - great apes
+  - object detection
+  - MegaDetector
+  - PanAf20K
+  - reproducible research
+
+# No code licence has been selected yet, so no `license:` key is declared here.
+# Under default copyright that means no reuse rights are granted. Add the SPDX
+# identifier (e.g. `license: MIT`) at the same time as adding a root LICENSE
+# file, and update docs/licensing.md and the README table to match.
+# See docs/licensing.md before publishing.
+
+references:
+  - type: article
+    title: >-
+      PanAf20K: A Large Video Dataset for Wild Ape Detection and Behaviour
+      Recognition
+    year: 2024
+    url: "https://arxiv.org/abs/2401.13554"
+    notes: The dataset this project uses. Cite this if you use PanAf500 or PanAf20K.
+    authors:
+      - family-names: Brookes
+        given-names: Otto
+      - family-names: Mirmehdi
+        given-names: Majid
+      - family-names: Stephens
+        given-names: Colleen
+      - family-names: Angedakin
+        given-names: Samuel
+      - family-names: Corogenes
+        given-names: Katherine
+      - family-names: Dowd
+        given-names: Dervla
+      - family-names: Dieguez
+        given-names: Paula
+      - family-names: Hicks
+        given-names: Thurston C.
+      - family-names: Jones
+        given-names: Sorrel
+      - family-names: Lee
+        given-names: Kevin
+      - family-names: Leinert
+        given-names: Vera
+      - family-names: Lapuente
+        given-names: Juan
+      - family-names: McCarthy
+        given-names: Maureen S.
+      - family-names: Meier
+        given-names: Amelia
+      - family-names: Murai
+        given-names: Mizuki
+      - family-names: Normand
+        given-names: Emmanuelle
+      - family-names: Vergnes
+        given-names: Virginie
+      - family-names: Wessling
+        given-names: Erin G.
+      - family-names: Wittig
+        given-names: Roman M.
+      - family-names: Langergraber
+        given-names: Kevin
+      - family-names: Maldonado
+        given-names: Nuria
+      - family-names: Yang
+        given-names: Xinyu
+      - family-names: Zuberbuhler
+        given-names: Klaus
+      - family-names: Boesch
+        given-names: Christophe
+      - family-names: Arandjelovic
+        given-names: Mimi
+      - family-names: Kuhl
+        given-names: Hjalmar
+      - family-names: Burghardt
+        given-names: Tilo
+
+  - type: data
+    title: >-
+      PanAf20K: A Large Video Dataset for Wild Ape Detection and Behaviour
+      Recognition
+    year: 2024
+    url: "https://data.bris.ac.uk/data/dataset/1h73erszj3ckn2qjwm4sqmr2wt"
+    notes: >-
+      University of Bristol data deposit. Non-commercial data licence; verify the
+      exact terms, and the deposit's own preferred citation and DOI, on the
+      deposit page. Dataset files must not be redistributed.
+    authors:
+      - family-names: Brookes
+        given-names: Otto
+      - family-names: Burghardt
+        given-names: Tilo
+      - family-names: Mirmehdi
+        given-names: Majid
+
+  - type: article
+    title: Efficient Pipeline for Camera Trap Image Review
+    year: 2019
+    url: "https://arxiv.org/abs/1907.06772"
+    notes: >-
+      The MegaDetector paper. MegaDetector is a general animal/person/vehicle
+      detector; it does not classify species or behaviour.
+    authors:
+      - family-names: Beery
+        given-names: Sara
+      - family-names: Morris
+        given-names: Dan
+      - family-names: Yang
+        given-names: Siyu
+
+  - type: software
+    title: >-
+      Pytorch-Wildlife: A Collaborative Deep Learning Framework for Conservation
+    year: 2024
+    url: "https://github.com/microsoft/Pytorch-Wildlife"
+    notes: >-
+      MIT-licensed framework used here to load and run MegaDetector V6. Model
+      weight licences differ by variant and are not covered by the framework's
+      licence.
+    authors:
+      - name: Microsoft AI for Good Research Lab

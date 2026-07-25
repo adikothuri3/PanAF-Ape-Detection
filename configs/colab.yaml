@@ -1,0 +1,51 @@
+# Google Colab variant of configs/base.yaml.
+#
+# Differences from the baseline:
+#   * device is pinned to cuda, since a Colab GPU runtime is assumed
+#     (Runtime -> Change runtime type -> T4 GPU).
+#   * frame_stride is raised so a first end-to-end pass finishes quickly on a
+#     session-limited runtime.
+#   * max_clips is lowered for the same reason.
+#
+# Paths are still repository-relative. If you keep the dataset on Google Drive,
+# point paths.raw_data_dir at the mounted location, e.g.
+#   raw_data_dir: /content/drive/MyDrive/panaf/raw
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: phase1-colab
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  artifacts_dir: artifacts
+
+data:
+  manifest_path: data/sample_manifest.csv
+  max_clips: 5
+  frame_stride: 2
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  variant: MDV6-yolov9-c
+  confidence_threshold: 0.2
+  device: cuda
+
+tracking:
+  enabled: false
+  backend: none
+  minimum_track_length: 5
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+
+logging:
+  level: INFO
+  save_run_metadata: true

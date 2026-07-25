@@ -1,0 +1,126 @@
+% References for panaf-ape-detection.
+%
+% If you report detection results, cite the dataset AND the models. They are
+% distinct contributions from distinct teams. Do not cite this repository as a
+% source of methods -- it is a scaffold that runs other people's models.
+
+% --------------------------------------------------------------------------- %
+% Dataset
+% --------------------------------------------------------------------------- %
+
+@article{brookes2024panaf20k,
+  title         = {{PanAf20K}: A Large Video Dataset for Wild Ape Detection and Behaviour Recognition},
+  author        = {Brookes, Otto and Mirmehdi, Majid and Stephens, Colleen and
+                   Angedakin, Samuel and Corogenes, Katherine and Dowd, Dervla and
+                   Dieguez, Paula and Hicks, Thurston C. and Jones, Sorrel and
+                   Lee, Kevin and Leinert, Vera and Lapuente, Juan and
+                   McCarthy, Maureen S. and Meier, Amelia and Murai, Mizuki and
+                   Normand, Emmanuelle and Vergnes, Virginie and Wessling, Erin G. and
+                   Wittig, Roman M. and Langergraber, Kevin and Maldonado, Nuria and
+                   Yang, Xinyu and Zuberb{\"u}hler, Klaus and Boesch, Christophe and
+                   Arandjelovic, Mimi and K{\"u}hl, Hjalmar and Burghardt, Tilo},
+  journal       = {arXiv preprint arXiv:2401.13554},
+  year          = {2024},
+  eprint        = {2401.13554},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2401.13554},
+  note          = {Describes the PanAf20K dataset (~20,000 camera-trap videos, >7M frames,
+                   14 African field sites) and the densely annotated PanAf500 subset
+                   (per-frame boxes, identity tracks and behaviour labels).}
+}
+
+@misc{panaf20k_dataset_deposit,
+  title        = {{PanAf20K}: A Large Video Dataset for Wild Ape Detection and Behaviour Recognition},
+  author       = {Brookes, Otto and Burghardt, Tilo and Mirmehdi, Majid and others},
+  year         = {2024},
+  howpublished = {University of Bristol Research Data Repository (data.bris)},
+  url          = {https://data.bris.ac.uk/data/dataset/1h73erszj3ckn2qjwm4sqmr2wt},
+  note         = {Data deposit. Released under a non-commercial data licence; verify the exact
+                  terms and the deposit's own preferred citation and DOI on the deposit page.
+                  Dataset files must not be redistributed.}
+}
+
+% --------------------------------------------------------------------------- %
+% Models and software
+% --------------------------------------------------------------------------- %
+
+@misc{beery2019megadetector,
+  title        = {Efficient Pipeline for Camera Trap Image Review},
+  author       = {Beery, Sara and Morris, Dan and Yang, Siyu},
+  year         = {2019},
+  eprint       = {1907.06772},
+  archiveprefix = {arXiv},
+  primaryclass = {cs.CV},
+  url          = {https://arxiv.org/abs/1907.06772},
+  note         = {The MegaDetector paper. MegaDetector is a general animal/person/vehicle
+                  detector for camera-trap imagery; it does not classify species or behaviour.}
+}
+
+@misc{megadetector_repository,
+  title        = {{MegaDetector}},
+  author       = {Morris, Dan and Beery, Sara and Yang, Siyu and others},
+  year         = {2024},
+  howpublished = {\url{https://github.com/agentmorris/MegaDetector}},
+  note         = {Code MIT-licensed. Model weight licences vary by version and variant and must be
+                  verified per variant; see docs/licensing.md.}
+}
+
+@inproceedings{hernandez2024pytorchwildlife,
+  title     = {{Pytorch-Wildlife}: A Collaborative Deep Learning Framework for Conservation},
+  author    = {Hernandez, Andres and Miao, Zhongqi and Vargas, Luisa and
+               Beery, Sara and Dodhia, Rahul and Arbelaez, Pablo and
+               Lavista Ferres, Juan M.},
+  year      = {2024},
+  eprint    = {2405.12930},
+  archiveprefix = {arXiv},
+  primaryclass  = {cs.CV},
+  url       = {https://arxiv.org/abs/2405.12930},
+  note      = {The framework used here to load and run MegaDetector V6.}
+}
+
+@misc{pytorch_wildlife_repository,
+  title        = {{PyTorch-Wildlife}: A Collaborative Deep Learning Framework and Model Zoo for Conservation},
+  author       = {{Microsoft AI for Good Research Lab}},
+  year         = {2024},
+  howpublished = {\url{https://github.com/microsoft/Pytorch-Wildlife}},
+  note         = {MIT-licensed library. Provides MegaDetectorV6 (MDV6-yolov9-c/e,
+                  MDV6-yolov10-c/e, MDV6-rtdetr-c) and MegaDetectorV6Apache
+                  (MDV6-apa-rtdetr-c/e). Weights are distributed separately via Zenodo.}
+}
+
+@misc{megadetector_v6_weights_zenodo,
+  title        = {{MegaDetector} v6 model weights},
+  author       = {{Microsoft AI for Good Research Lab}},
+  year         = {2025},
+  howpublished = {Zenodo record 15398270},
+  url          = {https://zenodo.org/records/15398270},
+  note         = {Source of the MDV6 weight files downloaded on first use by PyTorch-Wildlife.
+                  Licence terms differ between variants; verify the exact variant you use.}
+}
+
+% --------------------------------------------------------------------------- %
+% Tracking -- candidate backends for Phase 1d. The backend has NOT been chosen;
+% these are cited so the eventual decision can reference the alternatives.
+% --------------------------------------------------------------------------- %
+
+@inproceedings{zhang2022bytetrack,
+  title     = {{ByteTrack}: Multi-Object Tracking by Associating Every Detection Box},
+  author    = {Zhang, Yifu and Sun, Peize and Jiang, Yi and Yu, Dongdong and
+               Weng, Fucheng and Yuan, Zehuan and Luo, Ping and Liu, Wenyu and
+               Wang, Xinggang},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2022},
+  url       = {https://arxiv.org/abs/2110.06864},
+  note      = {Available via the `supervision` package, already an indirect dependency.}
+}
+
+@inproceedings{bewley2016sort,
+  title     = {Simple Online and Realtime Tracking},
+  author    = {Bewley, Alex and Ge, Zongyuan and Ott, Lionel and
+               Ramos, Fabio and Upcroft, Ben},
+  booktitle = {IEEE International Conference on Image Processing (ICIP)},
+  year      = {2016},
+  pages     = {3464--3468},
+  url       = {https://arxiv.org/abs/1602.00763}
+}

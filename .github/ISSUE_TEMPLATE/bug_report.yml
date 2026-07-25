@@ -1,0 +1,97 @@
+name: Bug report
+description: Something in the repository does not work as documented.
+title: "[bug] "
+labels: [bug]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: the detection, tracking and annotation pipeline is **not
+        implemented yet**. "`panaf-phase1 detect` does not exist" is expected
+        behaviour, not a bug — see the roadmap in the README.
+
+        **Do not attach dataset files, frames, or model weights.** A description
+        or a synthetic reproduction is enough.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands you ran, in order.
+      render: shell
+      placeholder: |
+        uv sync
+        uv run panaf-phase1 validate-config --config configs/base.yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error output
+      description: >-
+        The full traceback or error message, verbatim. Paraphrases are not
+        debuggable. Redact any absolute paths that reveal dataset locations.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `uv run panaf-phase1 doctor`
+      description: This captures Python, OS, device and which packages are installed.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Which environment?
+      options:
+        - Default (`uv sync`) — no inference extra
+        - Full (`uv sync --extra inference`)
+        - Google Colab
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Output of `git rev-parse --short HEAD`, and whether the tree was dirty.
+      placeholder: "abc1234 (clean)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: >-
+        The config file used and any `PANAF_*` environment overrides in effect.
+        **Do not paste secrets.**
+      render: yaml
+
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have not attached dataset files, frames, or model weights.
+          required: true
+        - label: I have not included credentials or tokens in this report.
+          required: true
+        - label: I checked that this is not an already-documented unimplemented stage.
+          required: true

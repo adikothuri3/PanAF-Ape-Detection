@@ -1,0 +1,54 @@
+# Phase 1 baseline configuration.
+#
+# All relative paths resolve against the repository root, not your shell's
+# working directory. Unknown keys are rejected: if you add a key here you must
+# also add it to the matching pydantic model in src/panaf_ape_detection/config.py.
+#
+# Never put credentials or access tokens in this file. See .env.example.
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: phase1-baseline
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  artifacts_dir: artifacts
+
+data:
+  # Created by you from data/sample_manifest.example.csv once clips are chosen.
+  manifest_path: data/sample_manifest.csv
+  # Phase 1 deliberately works on a small, hand-picked sample.
+  max_clips: 8
+  # 1 = every decoded frame. Raise this to sample frames on slow hardware.
+  frame_stride: 1
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  # The exact weight variant is recorded with every run. Do not remove it or
+  # rely on an upstream default. See docs/model.md for the recognised set.
+  variant: MDV6-yolov9-c
+  confidence_threshold: 0.2
+  # auto | cpu | cuda | mps
+  device: auto
+
+tracking:
+  # Not implemented yet. The backend is chosen after the detection baseline
+  # is working; see docs/architecture.md.
+  enabled: false
+  backend: none
+  minimum_track_length: 5
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+
+logging:
+  level: INFO
+  save_run_metadata: true

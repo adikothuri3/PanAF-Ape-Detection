@@ -1,0 +1,75 @@
+# Install with: uv run pre-commit install
+# Run over everything: uv run pre-commit run --all-files
+#
+# These hooks are the last line of defence against committing data, weights or
+# secrets. Do not use `--no-verify` to get around a failure -- fix the cause.
+
+default_language_version:
+  python: python3.11
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        name: ruff lint
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: ruff format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # File hygiene
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # Format validation
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: ^notebooks/.*\.ipynb$
+      - id: check-ast
+
+      # Safety
+      - id: check-added-large-files
+        name: block large files (weights, video, datasets)
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: local
+    hooks:
+      - id: no-dataset-or-weights
+        name: block dataset files and model weights
+        entry: >-
+          Refusing to commit dataset files, media or model weights.
+          See data/README.md and docs/licensing.md.
+        language: fail
+        files: >-
+          (?x)^(
+            data/(raw|interim|processed)/(?!.*\.gitkeep$).+
+            |artifacts/.+
+            |data/sample_manifest\.csv$
+            |.*\.(pt|pth|onnx|safetensors|ckpt|h5|hdf5|pb|tflite|weights)$
+            |.*\.(mp4|avi|mov|mkv|webm|flv|wmv|m4v|mpg|mpeg)$
+            |.*\.(npy|npz)$
+          )$
+
+      # Output cells can embed dataset frames as base64 images, which would be
+      # redistribution of PanAf footage through this repository. Delegated to
+      # the repository verifier so there is one implementation of the rule.
+      - id: notebook-outputs-cleared
+        name: notebooks are valid and have no stored output
+        language: system
+        types: [jupyter]
+        pass_filenames: false
+        entry: python3 scripts/verify_repository.py --only notebooks

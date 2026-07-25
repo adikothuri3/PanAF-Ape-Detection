@@ -1,0 +1,75 @@
+version: 2
+
+# Notes on the uv workflow:
+#   * Dependabot updates `pyproject.toml` constraints. It does not regenerate
+#     `uv.lock`. A Dependabot PR that touches pyproject.toml therefore needs
+#     `make lock` run locally (which also refreshes requirements-colab.txt) and
+#     committed to the PR branch, or CI's `lockfile` job will fail. That failure
+#     is intentional -- it is the reminder.
+#   * The `inference` extra is pinned around known-broken upstream releases
+#     (see the comments in pyproject.toml). Read those before accepting an
+#     update to setuptools, pytorchwildlife, soundfile or librosa.
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependencies
+      - python
+    groups:
+      # Keep the dev toolchain moving together; these are low-risk and CI covers them.
+      dev-tools:
+        patterns:
+          - ruff
+          - mypy
+          - pytest*
+          - pre-commit
+          - types-*
+        update-types:
+          - minor
+          - patch
+      # Core runtime deps: grouped, but review individually.
+      core:
+        patterns:
+          - pydantic*
+          - typer
+          - rich
+          - pyyaml
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Pinned deliberately: setuptools 81 deprecated and 83 removed
+      # `pkg_resources`, which PytorchWildlife's `yolov5` dependency still
+      # imports. Unpin only after verifying `import PytorchWildlife` succeeds.
+      - dependency-name: setuptools
+        versions: [">=81"]
+      # Major bumps of the heavy CV stack change numerics and APIs; take these
+      # deliberately, with a re-run of the baseline, not via an automated PR.
+      - dependency-name: torch
+        update-types: [version-update:semver-major]
+      - dependency-name: torchvision
+        update-types: [version-update:semver-major]
+      - dependency-name: pytorchwildlife
+        update-types: [version-update:semver-major]
+      - dependency-name: numpy
+        update-types: [version-update:semver-major]

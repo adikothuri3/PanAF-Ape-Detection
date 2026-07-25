@@ -1,0 +1,109 @@
+name: Experiment
+description: Propose an experiment or a pipeline implementation task.
+title: "[experiment] "
+labels: [experiment]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to plan work **before** running it. The hypothesis and success
+        criteria below must be written in advance — stating them afterwards is
+        just describing the outcome.
+
+        The resulting run gets an entry in `experiments/experiment_log.md`,
+        including anything that failed.
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What are you trying to find out or build? One paragraph.
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis or question
+      description: >-
+        What do you expect to happen, and why? For an implementation task, what
+        will exist afterwards that does not exist now?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Roadmap phase
+      options:
+        - 1b — Clip selection and frame extraction
+        - 1c — MegaDetector V6 inference and run metadata
+        - 1d — Tracker integration
+        - 1e — Behaviour-label overlay and video export
+        - 1f — Qualitative evaluation and write-up
+        - 2 — Quantitative evaluation
+        - 3 — Variant comparison / fine-tuning
+        - Tooling or infrastructure
+    validations:
+      required: true
+
+  - type: textarea
+    id: data
+    attributes:
+      label: Data
+      description: >-
+        Which clips (manifest ids), how many, and why those. Remember Phase 1
+        targets roughly 5–10 clips. **Do not paste dataset contents.**
+
+  - type: textarea
+    id: model
+    attributes:
+      label: Model and settings
+      description: Model, exact variant, confidence threshold, tracker backend, device.
+      placeholder: |
+        Model: MegaDetectorV6
+        Variant: MDV6-yolov9-c
+        Confidence threshold: 0.2
+        Tracker: none
+        Device: mps
+
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: What will you actually do, step by step?
+    validations:
+      required: true
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: >-
+        How will you know whether this worked? Be concrete enough that the answer
+        could be "no".
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and unknowns
+      description: >-
+        What might go wrong, what is unverified (e.g. annotation schema), and what
+        would make you abandon this?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmations
+      options:
+        - label: This does not involve fine-tuning or training (out of scope this phase).
+          required: true
+        - label: This does not require downloading the full PanAf20K dataset.
+          required: true
+        - label: I will record the outcome in `experiments/experiment_log.md`, including failures.
+          required: true
+        - label: I will not report results without stating the model variant and threshold.
+          required: true
