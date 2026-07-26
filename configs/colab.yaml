@@ -2,10 +2,11 @@
 #
 # Differences from the baseline:
 #   * device is pinned to cuda, since a Colab GPU runtime is assumed
-#     (Runtime -> Change runtime type -> T4 GPU).
-#   * frame_stride is raised so a first end-to-end pass finishes quickly on a
-#     session-limited runtime.
-#   * max_clips is lowered for the same reason.
+#     (Runtime -> Change runtime type -> T4 GPU). Note that PyTorch-Wildlife
+#     ignores the device argument; the adapter forces and verifies it.
+#   * the full sample runs at every frame -- a T4 gets through 10 clips in
+#     roughly 10 minutes, so there is no reason to subsample and end up
+#     comparing a partial run against a full one.
 #
 # Paths are still repository-relative. If you keep the dataset on Google Drive,
 # point paths.raw_data_dir at the mounted location, e.g.
@@ -24,8 +25,8 @@ paths:
 
 data:
   manifest_path: data/sample_manifest.csv
-  max_clips: 5
-  frame_stride: 2
+  max_clips: 10
+  frame_stride: 1
 
 model:
   framework: pytorch-wildlife

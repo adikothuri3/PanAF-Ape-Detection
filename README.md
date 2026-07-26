@@ -138,18 +138,29 @@ sudo apt-get install ffmpeg  # Debian/Ubuntu
 
 `panaf-phase1 doctor` reports whether FFmpeg, CUDA and Apple MPS are available.
 
-### Google Colab
+### Google Colab (the full 10-clip run)
 
-Open [`notebooks/phase1_colab.ipynb`](notebooks/phase1_colab.ipynb) in Colab and select
-**Runtime → Change runtime type → T4 GPU**. The notebook installs from `requirements-colab.txt`,
-which is generated from `uv.lock` and is therefore not a second source of truth:
+Open [`notebooks/phase1_colab.ipynb`](notebooks/phase1_colab.ipynb) in Colab, then:
 
-```bash
-uv export --extra inference --no-hashes --no-dev --format requirements-txt -o requirements-colab.txt
-```
+1. **Runtime → Change runtime type → T4 GPU → Save** *(do this first — changing it later restarts
+   the session)*
+2. **Runtime → Run all**
 
-Use [`configs/colab.yaml`](configs/colab.yaml) there — it pins `device: cuda` and uses a larger
-frame stride so a first pass finishes inside a session.
+Nothing to edit, nothing to upload. It clones the repo, installs, downloads the 10 clips from the
+Bristol deposit, runs MegaDetector over every frame of all of them, and displays the annotated video
+and metrics inline. About 15 minutes.
+
+It uses [`configs/colab.yaml`](configs/colab.yaml) — `device: cuda`, all 10 clips, every frame.
+
+> **The notebook deliberately does not install `requirements-colab.txt`.** That file pins the full
+> locked environment including `torch`, and forcing it onto Colab replaces the CUDA-matched torch
+> already there — a multi-gigabyte download that can leave the runtime without working CUDA. The
+> notebook installs only what Colab lacks and keeps Colab's torch; `requirements-colab.txt` remains
+> the source of truth for reproducing the environment outside Colab. Regenerate it with:
+>
+> ```bash
+> uv export --extra inference --no-hashes --no-dev --format requirements-txt -o requirements-colab.txt
+> ```
 
 ## Configuration
 
