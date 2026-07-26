@@ -177,8 +177,9 @@ class ModelConfig(_Section):
 class TrackingConfig(_Section):
     """Multi-object tracking settings.
 
-    Tracking is not implemented yet. The backend choice is deferred until the
-    detection baseline is working, so the default configuration disables it.
+    ``bytetrack`` is implemented; ``sort`` is a valid value with no
+    implementation behind it, and the runner raises rather than silently
+    running untracked.
 
     Attributes:
         enabled: Whether the tracking stage should run.

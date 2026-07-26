@@ -16,9 +16,12 @@ import pytest
 
 from panaf_ape_detection import runtime
 from panaf_ape_detection.runtime import (
+    ALLOW_CPU_ENV,
+    CpuInferenceRefusedError,
     DeviceUnavailableError,
     available_devices,
     module_device,
+    require_accelerator,
     resolve_device,
     set_seeds,
 )
@@ -231,3 +234,38 @@ def test_module_device_survives_a_reference_cycle():
     node.model = node  # self-referential wrapper must not hang
 
     assert module_device(node) is None
+
+
+# --------------------------------------------------------------------------- #
+# CPU refusal
+#
+# Project policy: inference never runs on CPU. A CPU run does not crash, it just
+# takes hours, so it is refused rather than warned about.
+# --------------------------------------------------------------------------- #
+
+
+def test_require_accelerator_refuses_cpu(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv(ALLOW_CPU_ENV, raising=False)
+
+    with pytest.raises(CpuInferenceRefusedError, match="Colab"):
+        require_accelerator(DeviceKind.CPU)
+
+
+@pytest.mark.parametrize("device", [DeviceKind.CUDA, DeviceKind.MPS])
+def test_require_accelerator_passes_accelerators_through(
+    device: DeviceKind, monkeypatch: pytest.MonkeyPatch
+):
+    """MPS counts: the policy is about CPU, not about being local."""
+    monkeypatch.delenv(ALLOW_CPU_ENV, raising=False)
+
+    assert require_accelerator(device) is device
+
+
+def test_the_escape_hatch_allows_cpu_but_only_when_set_to_one(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(ALLOW_CPU_ENV, "1")
+    assert require_accelerator(DeviceKind.CPU) is DeviceKind.CPU
+
+    # Anything else is not opting in -- "0" or "false" must still refuse.
+    monkeypatch.setenv(ALLOW_CPU_ENV, "0")
+    with pytest.raises(CpuInferenceRefusedError):
+        require_accelerator(DeviceKind.CPU)

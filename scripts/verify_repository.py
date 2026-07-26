@@ -76,14 +76,19 @@ REQUIRED_FILES: tuple[str, ...] = (
     "src/panaf_ape_detection/data/annotations.py",
     "src/panaf_ape_detection/data/video.py",
     "src/panaf_ape_detection/evaluation/detection.py",
+    "src/panaf_ape_detection/evaluation/tracking.py",
     "src/panaf_ape_detection/inference/base.py",
     "src/panaf_ape_detection/inference/megadetector.py",
     "src/panaf_ape_detection/inference/filtering.py",
     "src/panaf_ape_detection/visualization/overlays.py",
     "src/panaf_ape_detection/visualization/video.py",
     "src/panaf_ape_detection/pipeline/runner.py",
+    "src/panaf_ape_detection/tracking/base.py",
+    "src/panaf_ape_detection/tracking/bytetrack.py",
+    "src/panaf_ape_detection/tracking/convert.py",
     "tests/test_annotations.py",
     "tests/test_evaluation.py",
+    "tests/test_tracking.py",
     "tests/test_video_and_overlays.py",
     "scripts/smoke_detect.py",
     "scripts/smoke_inference.py",
@@ -181,7 +186,7 @@ MAX_TRACKED_FILE_BYTES = 1_000_000
 # Commands the CLI is allowed to expose. A command may only be registered in the
 # same change that implements and tests it -- this list is the gate.
 EXPECTED_CLI_COMMANDS: frozenset[str] = frozenset(
-    {"doctor", "validate-config", "show-paths", "fetch-clips", "detect", "evaluate"}
+    {"doctor", "validate-config", "show-paths", "fetch-clips", "detect", "evaluate", "track"}
 )
 
 _failures: list[str] = []
@@ -271,6 +276,42 @@ def check_configs_validate() -> None:
             load_config(config_path, use_env_overrides=False)
         except ConfigError as exc:
             fail(f"{config_path.relative_to(REPO_ROOT)} does not validate:\n{exc}")
+
+
+def check_configs_agree_about_pipeline_stages() -> None:
+    """The shipped configs must enable the same stages as each other.
+
+    ``colab.yaml`` is ``base.yaml`` plus device and throughput differences, so a
+    disagreement about *which stages run* means one of them is stale. This is not
+    hypothetical: ``base.yaml`` was once left at ``tracking.enabled: false`` after
+    tracking shipped, and a ten-clip run silently produced no tracks at all while
+    every document said tracking was on.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        from panaf_ape_detection.config import ConfigError, load_config
+    except ImportError as exc:  # pragma: no cover - reported by check_configs_validate
+        fail(f"cannot import panaf_ape_detection.config: {exc}")
+        return
+
+    stages: dict[str, tuple[bool, str]] = {}
+    for name in ("base.yaml", "colab.yaml"):
+        path = REPO_ROOT / "configs" / name
+        if not path.is_file():
+            fail(f"configs/{name} is missing")
+            continue
+        try:
+            config = load_config(path, use_env_overrides=False)
+        except ConfigError:  # pragma: no cover - reported by check_configs_validate
+            continue
+        stages[name] = (config.tracking.enabled, config.tracking.backend.value)
+
+    if len(stages) == 2 and len(set(stages.values())) != 1:
+        described = ", ".join(
+            f"{name}: enabled={enabled}, backend={backend}"
+            for name, (enabled, backend) in sorted(stages.items())
+        )
+        fail(f"configs disagree about the tracking stage ({described})")
 
 
 def check_notebooks_are_valid_json() -> None:
@@ -605,6 +646,11 @@ CHECKS: tuple[tuple[str, str, Callable[[], None]], ...] = (
     ("structure", "required files and directories exist", check_required_paths),
     ("licensing", "licence documentation is consistent", check_license_documentation_is_consistent),
     ("config", "configs validate against the typed model", check_configs_validate),
+    (
+        "config",
+        "configs agree about which pipeline stages run",
+        check_configs_agree_about_pipeline_stages,
+    ),
     ("notebooks", "notebooks are valid JSON", check_notebooks_are_valid_json),
     ("notebooks", "notebooks carry no stored output", check_notebooks_have_no_stored_output),
     ("cli", "CLI exposes only implemented commands", check_cli_exposes_only_implemented_commands),

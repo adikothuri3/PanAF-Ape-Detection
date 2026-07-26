@@ -551,3 +551,246 @@ Before any fine-tuning, the cheap experiments come first: a confidence-threshold
 **Next action**
 Run the remaining 7 clips on the Colab T4 using `notebooks/phase1_colab.ipynb`, then a threshold
 sweep over the saved detections before deciding anything about fine-tuning.
+
+---
+
+## 2026-07-26 — Tracking implemented; all 10 clips run twice; two earlier conclusions overturned
+
+**Objective**
+Close Phase 1 step 4 (tracking), run the complete 10-clip sample rather than 3, and separate what
+the detector does from what the tracker does.
+
+**Hypothesis / question**
+Written down before the run: **recall is 0.411, so tracks will fragment.** A tracker cannot
+associate a detection that was never made, so many short tracks per individual were expected, and
+that should be read as a consequence of detection recall rather than a tracker defect.
+
+**Environment**
+- Machine / OS: macOS 15.5, Apple M1, arm64
+- Device: **mps:0, verified** by inspecting tensor placement
+- Python: 3.11.15
+- Wall clock: ~20 min per 10-clip pass (`elapsed_seconds` in run metadata)
+
+**Data / clip IDs**
+**All 10** manifest clips, every frame: 3600 frames, 4985 annotated boxes, 23 annotated individuals.
+
+**Model and variant**
+- PyTorch-Wildlife 1.3.0 · MegaDetectorV6 · `MDV6-yolov9-c`
+- Confidence 0.20 · IoU 0.50 · ByteTrack activation 0.20, buffer 30, match 0.80, 24 fps
+- `minimum_track_length: 5`
+
+**Commands run**
+```bash
+# pass A -- detector only, artifacts/no-tracking/
+uv run --extra inference panaf-phase1 detect -c artifacts/detector_only.yaml --overwrite
+# pass B -- detector + ByteTrack, artifacts/
+uv run --extra inference panaf-phase1 detect -c configs/base.yaml --overwrite
+```
+
+**Observations**
+
+| | Detector only | + ByteTrack |
+|---|---|---|
+| Precision | 0.8743 | 0.9165 |
+| Recall | 0.3864 | 0.3525 |
+| F1 | 0.5359 | 0.5091 |
+| Pooled mean IoU | 0.8252 | 0.8322 |
+| TP / FP / FN | 1926 / 277 / 3059 | 1757 / 160 / 3228 |
+| FP on the 74 empty frames | 7 | 3 |
+
+Tracking: 23 individuals, 29 predicted tracks, **17 ID switches**, mean fragmentation **1.35**,
+pooled coverage **0.353**, 7 mostly-tracked, 9 mostly-lost.
+
+**The hypothesis was wrong in an informative way.** Fragmentation is *low* (1.35, ideal 1.00), not
+high. ByteTrack holds an ape it can see. What low recall caps is **coverage** (0.353 ≈ recall
+0.386), not track continuity. Three clips produced no tracks at all because they produced almost no
+detections.
+
+**Two conclusions from the 2026-07-25 write-up did not survive the full sample**
+
+1. `hanging` recall was reported as **0.000 (0/213)** and described as "blindness". Over 1346
+   instances it is **0.102**. Bad, but not blindness — the zero was one clip.
+2. The by-size table showed a "large subject dip" (0.395), flagged then as *possibly* confounded.
+   With 10 clips it is **0.214**, and the confound is now measurable: 1335 of 1544 large boxes come
+   from four single-ape, close-up, badly-lit tree clips. In the two clips containing large *and*
+   small subjects together, large-subject recall is **0.856 and 0.899** — the best of any band.
+   **The failure is contrast, not size.**
+
+**Failures and dead ends**
+
+- **`configs/base.yaml` still had `tracking.enabled: false`.** Only `colab.yaml` had been updated
+  when tracking shipped. The first 10-clip run was launched, ran four minutes, and was producing
+  *no tracks at all* while every document claimed tracking was on. Killed and restarted after
+  confirming the tracker logs its settings on construction. Added a verification check that the two
+  shipped configs must agree about which pipeline stages run.
+- **`data.max_clips: 8` silently capped the "full" run at 8 of 10 clips.** Raised to 10, with a
+  comment: this must never sit below the manifest size or a full run quietly omits clips.
+- **The pooled `mean_iou` statistic was wrong.** `summarise()` averaged per-clip means, and a clip
+  with *no* matched pairs has `mean_iou = 0.0` by construction — so three zero-match clips dragged
+  the tracked figure to 0.579 and made it look as though the tracker had wrecked localisation. It
+  had not: weighting by matched pairs gives 0.8252 detector-only versus 0.8322 tracked. Fixed to
+  weight by true positives, with a regression test. **I nearly reported the artifact as a finding.**
+- **Enabling tracking changes the detection metrics**, because `drop_short_tracks` runs before
+  evaluation. This is why both passes exist. Reporting pass B alone as "MegaDetector's accuracy"
+  would have been wrong.
+
+**Exact errors**
+```text
+# mypy, on the tracked-detection narrowing in the runner -- list is invariant:
+src/panaf_ape_detection/pipeline/runner.py:230: error: Incompatible types in assignment
+  (expression has type "list[TrackedDetection]", variable has type "list[Detection]")  [assignment]
+src/panaf_ape_detection/pipeline/runner.py:230: note: "list" is invariant
+src/panaf_ape_detection/pipeline/runner.py:230: note: Consider using "Sequence" instead, which is covariant
+```
+
+**Interpretation**
+
+The detector is **precise but insensitive** (P 0.874, R 0.386), and the failure is concentrated in
+**low-contrast footage** — night, infrared, deep shade, blown-out backlight — with arboreal posture
+and small size as correlates rather than causes. Two frames inspected directly confirm it:
+`isfRigsIjO` frame 180 is a black chimpanzee against a black tree, obvious to a human, and produced
+**zero detections in all 360 frames**; `XmOoOk9n7t` frame 180 is the same silhouette problem from
+the opposite direction, backlit against blown-out white foliage.
+
+`minimum_track_length: 5` trades away more recall than it buys precision (+0.042 P, −0.034 R, F1
+falls). The removals are 3.3× enriched in false positives, so the filter is not thinning at random —
+but with recall as the binding constraint it is too aggressive here. That is a config value, and
+`panaf-phase1 track` re-runs tracking over saved detections in seconds.
+
+**Next action**
+Confidence sweep — see the next entry, which is where it went wrong and then went right.
+
+Full analysis: [findings 2026-07-26](../reports/phase1_findings_2026-07-26.md).
+
+---
+
+## 2026-07-26 (later) — The threshold was the problem, and a second ignored parameter
+
+**Objective**
+Sweep the confidence threshold. Precision 0.874 against recall 0.386 said the operating point was
+mistuned; this is the cheapest possible experiment and needed doing before anything else.
+
+**Hypothesis / question**
+There is precision to spend. Lowering the threshold should trade some of it for recall. Unknown:
+whether the recovered detections land on the easy clips (uninteresting) or the badly-lit ones
+(important).
+
+**Commands run**
+```bash
+# boxes below 0.20 were never saved, so a downward sweep needs a re-run
+uv run --extra inference panaf-phase1 detect -c artifacts/sweep_conf005.yaml --overwrite
+for c in 0.05 0.10 0.15 0.20 0.25 0.30 0.40 0.50; do
+  uv run panaf-phase1 evaluate -c artifacts/sweep_conf005.yaml --confidence $c
+done
+```
+
+**The first attempt was silently a no-op**
+
+The 0.05 run produced **byte-identical output to the 0.20 run**: 2203 detections, minimum confidence
+0.2002, zero boxes below 0.20. The sweep at 0.05, 0.10, 0.15 and 0.20 returned the same three
+numbers to four decimal places, which is what gave it away.
+
+Cause, confirmed by reading the installed source:
+
+```text
+YOLOV8Base.single_image_detection(self, img, img_path=None, det_conf_thres=0.2, id_strip=None)
+```
+
+The adapter called `single_image_detection(frame)` with no `det_conf_thres`, so **every run in this
+repository's history inferred at PyTorch-Wildlife's default of 0.2**, regardless of
+`model.confidence_threshold`. The configured value was only ever applied as a post-inference filter.
+
+Because the configured value *was* 0.2, every previously reported number is still correct — the two
+thresholds agreed by coincidence. What was impossible was going below it.
+
+**This is the second parameter this library accepts and ignores**, after `device=`. Same shape:
+accepted, stored, never applied where it matters; fails silently; only detectable by observing
+behaviour rather than the absence of an exception. Fixed by passing the configured threshold to
+every inference call, with three weights-free tests — including one that asserts the recorded
+default still matches the installed library's signature, so an upstream change breaks a test rather
+than quietly shifting results.
+
+**Results, after the fix**
+
+| Confidence | Precision | Recall | F1 |
+|---|---|---|---|
+| **0.05** | 0.6283 | **0.5633** | **0.5940** |
+| 0.10 | 0.7914 | 0.4558 | 0.5784 |
+| 0.15 | 0.8571 | 0.4116 | 0.5562 |
+| 0.20 | 0.8743 | 0.3864 | 0.5359 |
+| 0.25 | 0.8868 | 0.3661 | 0.5182 |
+| 0.30 | 0.9030 | 0.3472 | 0.5016 |
+| 0.40 | 0.9176 | 0.3081 | 0.4613 |
+| 0.50 | 0.9426 | 0.2800 | 0.4318 |
+
+F1 rises monotonically as the threshold falls and **has not turned over at 0.05**, so the optimum in
+this range is the lowest point tested and may be lower still.
+
+**The recovered detections are exactly where they matter**
+
+| Clip | R@0.20 | R@0.05 | Δ |
+|---|---|---|---|
+| `XmOoOk9n7t` (backlit) | 0.361 | 0.892 | **+0.531** |
+| `z97mIEQzcL` (deep shade) | 0.044 | 0.492 | **+0.447** |
+| `isfRigsIjO` (near-dark) | **0.000** | 0.433 | **+0.433** |
+| `RHH9DDfWZa` (infrared) | 0.009 | 0.265 | **+0.255** |
+| six daylight clips | — | — | +0.05 to +0.11 |
+
+`hanging` 0.102 → **0.527**. The "large" size band — which §5.2 of the write-up showed is really the
+badly-lit clips — 0.214 → **0.601**.
+
+**Interpretation**
+
+The earlier entry concluded that failure "concentrates in low-contrast footage". That is true, and
+the mechanism is now clear and much less dramatic: **low contrast depresses the confidence score; the
+threshold then discards the detection.** The detector was not blind to the ape in `isfRigsIjO` — it
+was scoring it between 0.05 and 0.20 for all 360 frames.
+
+Had the bug not been caught, the conclusion would have been "MegaDetector cannot see apes in
+low-contrast footage; fine-tune or preprocess" — a month of work aimed at a problem that a one-line
+YAML change substantially fixes. **Three claims in this study's lineage have now turned out to be
+artifacts rather than findings** (3-clip `hanging` blindness, the large-subject dip, the pooled
+mean-IoU collapse). Each was plausible, and each would have been expensive to act on.
+
+**Tracked run at 0.05 — the win does not survive the tracker**
+
+Hypothesis: precision 0.628 is low, but `minimum_track_length` is a temporal filter that should
+remove exactly the single-frame low-confidence noise a lower threshold admits, so tracking at 0.05
+should beat both.
+
+**Wrong, and the reason is worth more than the hypothesis was.** Tracking the 0.05 detections gives
+coverage 0.767 / 0.301 / 0.308 on the clips that track at all — identical to 0.20 to three decimals —
+with *more* ID switches (9uIpm1xLeI 4 → 8). The clips that produced no tracks still produce none.
+Lowering the detector threshold buys the tracker exactly nothing.
+
+Cause, read from the installed `supervision` source rather than guessed:
+
+```python
+inds_low = scores > 0.1                                    # <= 0.1 discarded outright
+self.det_thresh = self.track_activation_threshold + 0.1    # new tracks need activation + 0.1
+```
+
+Neither is configurable. **`track_activation_threshold` does not do what its name suggests** — it
+does not open the tracker to everything the detector kept, which is exactly what this repo's
+`bytetrack.py` docstring claimed. Docstring corrected.
+
+Isolated it from my own filter with `panaf-phase1 track --min-track-length 1|2|3|5` over the saved
+0.05 detections: the zero-track clips stay at zero for every value. It is ByteTrack's floor, not
+`drop_short_tracks`.
+
+The floor lands precisely on the recovered detections:
+
+| Clip | Detections @0.05 | ≤0.10 (discarded) | 0.10-0.15 (cannot start a track) | >0.15 (usable) |
+|---|---|---|---|---|
+| `isfRigsIjO` | 742 | 649 (87%) | 81 | **12 (2%)** |
+| `RHH9DDfWZa` | 98 | 73 | 20 | **5 (5%)** |
+| `FgJpFLxSmH` | 716 | 80 | 39 | 597 (83%) |
+
+**Third instance of the same failure mode in one day** — after `device=` and `det_conf_thres`, a
+parameter that is accepted and does not mean what its name implies. The first two were upstream's;
+this one I built on top of, by assuming a configurable threshold was the only threshold.
+
+**Next action**
+Extend the sweep below 0.05 for the detector-only case. For tracking, the question is no longer the
+detector threshold but whether ByteTrack's 0.1 floor makes it the wrong tracker for footage whose
+hard cases score at 0.05-0.10. Then the variant comparison.

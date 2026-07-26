@@ -298,3 +298,40 @@ def test_thresholds_are_recorded_with_the_result():
     assert evaluation.confidence_threshold == pytest.approx(0.35)
     assert evaluation.iou_threshold == pytest.approx(0.5)
     assert evaluation.as_dict()["confidence_threshold"] == pytest.approx(0.35)
+
+
+# --------------------------------------------------------------------------- #
+# Pooling across clips
+# --------------------------------------------------------------------------- #
+
+
+def test_pooled_mean_iou_weights_by_matched_pairs():
+    """A clip with no matches must not be averaged in as though it scored 0.0.
+
+    `ClipEvaluation.mean_iou` is 0.0 by construction when nothing matched, so an
+    unweighted mean over clips reports bad *localisation* where there was really
+    no localisation at all -- and lets a two-match clip outvote a 600-match one.
+    """
+    from panaf_ape_detection.pipeline.runner import ClipResult, summarise
+
+    exact = box(0, 0, 10, 10)
+    matched = evaluate_clip("clip-a", {0: [prediction(exact)]}, {0: frame(truth(exact))})
+    unmatched = evaluate_clip(
+        "clip-b", {0: [prediction(box(80, 80, 90, 90))]}, {0: frame(truth(exact))}
+    )
+    assert matched.mean_iou == pytest.approx(1.0)
+    assert unmatched.mean_iou == pytest.approx(0.0)
+    assert unmatched.overall.true_positives == 0
+
+    summary = summarise(
+        [
+            ClipResult(clip_id="clip-a", frames_processed=1, detections_kept=1, evaluation=matched),
+            ClipResult(
+                clip_id="clip-b", frames_processed=1, detections_kept=1, evaluation=unmatched
+            ),
+        ]
+    )
+
+    # Unweighted this would be 0.5; the one clip that matched anything scored 1.0.
+    assert summary["mean_iou"] == pytest.approx(1.0)
+    assert summary["matched_pairs"] == 1

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import random
 from typing import TYPE_CHECKING
 
@@ -22,9 +23,12 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from types import ModuleType
 
 __all__ = [
+    "ALLOW_CPU_ENV",
+    "CpuInferenceRefusedError",
     "DeviceUnavailableError",
     "available_devices",
     "module_device",
+    "require_accelerator",
     "resolve_device",
     "set_seeds",
 ]
@@ -39,6 +43,63 @@ class DeviceUnavailableError(RuntimeError):
     asked for CUDA and quietly used CPU produces timings that mean nothing and
     a ``RunMetadata`` record that misrepresents what happened.
     """
+
+
+class CpuInferenceRefusedError(RuntimeError):
+    """Raised when inference would run on CPU.
+
+    **Project policy: model inference never runs on CPU.** A CPU run is roughly
+    an order of magnitude slower, and the failure mode is not a crash but a
+    session that appears to work and quietly costs hours -- so it is refused
+    rather than warned about. Heavy runs belong on a Colab GPU; see
+    ``notebooks/phase1_colab.ipynb``.
+
+    Locally, Apple MPS counts as an accelerator and is allowed.
+    """
+
+
+ALLOW_CPU_ENV = "PANAF_ALLOW_CPU_INFERENCE"
+"""Escape hatch for :func:`require_accelerator`, set to ``1``.
+
+Exists for one purpose: debugging a non-performance bug on a machine with no
+accelerator. It is not for producing results -- anything measured under it is
+too slow to be a real run and must not be reported as a timing.
+"""
+
+
+def require_accelerator(device: DeviceKind) -> DeviceKind:
+    """Refuse to run inference on CPU, returning *device* otherwise.
+
+    Args:
+        device: A concrete device, normally straight from :func:`resolve_device`.
+
+    Returns:
+        *device*, unchanged, when it is an accelerator -- or when the
+        :data:`ALLOW_CPU_ENV` escape hatch is set.
+
+    Raises:
+        CpuInferenceRefusedError: If *device* is CPU and the escape hatch is
+            unset.
+    """
+    if device is not DeviceKind.CPU:
+        return device
+
+    if os.environ.get(ALLOW_CPU_ENV) == "1":
+        logger.warning(
+            "%s is set: running inference on CPU. This is for debugging only -- "
+            "timings from this run are meaningless and must not be reported.",
+            ALLOW_CPU_ENV,
+        )
+        return device
+
+    msg = (
+        "refusing to run inference on CPU. No CUDA or MPS device is available here.\n"
+        "Run this on a Colab GPU instead -- notebooks/phase1_colab.ipynb runs all 10 "
+        "clips end to end (Runtime -> Change runtime type -> T4 GPU).\n"
+        f"To debug a non-performance problem locally anyway, set {ALLOW_CPU_ENV}=1; "
+        "results from such a run are not reportable."
+    )
+    raise CpuInferenceRefusedError(msg)
 
 
 def _torch() -> ModuleType | None:

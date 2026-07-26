@@ -10,18 +10,31 @@ with — and to record that honestly enough that someone else can reproduce it.
 
 ## Status
 
-**Phase 1 detection pipeline implemented and measured.**
+**Phase 1 pipeline complete and measured on the full sample.**
 
 What works today: PanAf500 clip selection and download, frame decoding, pretrained MegaDetector V6
-inference, confidence filtering, annotated video export, and **accuracy measured against the
-dataset's ground-truth boxes**.
+inference, confidence filtering, **ByteTrack tracking**, behaviour-label overlay, annotated video
+export, and **accuracy and track quality measured against the dataset's ground-truth boxes and
+`ape_id`**.
 
-Measured on **3 clips / 1080 frames** at confidence 0.2 and IoU 0.5, on Apple MPS:
-**precision 0.854, recall 0.411, F1 0.555, mean IoU 0.831.** High precision, poor recall — see
-[the findings write-up](reports/) for the breakdown by behaviour and subject size.
+Measured on **all 10 clips / 3600 frames / 4985 annotated boxes** at confidence 0.20 and IoU 0.50,
+on verified Apple MPS:
 
-What does **not** exist yet: tracking (ByteTrack), and the full 10-clip run. No fine-tuning has been
-done; this phase exists to produce the evidence for that decision.
+| | Precision | Recall | F1 | Pooled mean IoU |
+|---|---|---|---|---|
+| Detector only | 0.874 | 0.386 | 0.536 | 0.825 |
+| + ByteTrack | **0.917** | 0.353 | 0.509 | 0.832 |
+
+Tracking: 23 annotated individuals, 29 predicted tracks, **17 ID switches**, mean fragmentation
+**1.35**, coverage 0.353.
+
+**Precise but insensitive**, and the failure is concentrated in **low-contrast footage** — night,
+infrared, deep shade, blown-out backlight — with arboreal posture and small subject size as
+correlates rather than causes. See [the findings write-up](reports/phase1_findings_2026-07-26.md)
+for the full breakdown, including two conclusions from an earlier 3-clip run that the full sample
+overturned.
+
+No fine-tuning has been done; this phase exists to produce the evidence for that decision.
 
 Current task, reading progress and the deliverable checklist are tracked in
 [`docs/obsidian/00 Start Here/PanAf Command Center.md`](docs/obsidian/00%20Start%20Here/PanAf%20Command%20Center.md).
@@ -69,19 +82,18 @@ flowchart TD
     A["PanAf500 clips<br/><i>manually obtained</i>"] --> B["Frame extraction"]
     B --> C["MegaDetector V6<br/><i>pretrained, PyTorch-Wildlife</i>"]
     C --> D["Confidence filtering"]
-    D --> E["Tracker<br/><i>ByteTrack / SORT — backend TBD</i>"]
+    D --> E["Tracker<br/><i>ByteTrack, via supervision</i>"]
     E --> F["Behaviour-label overlay<br/><i>dataset labels, not predicted</i>"]
     F --> G["Annotated video"]
     G --> H["Qualitative evaluation"]
 
     classDef done fill:#1b4332,stroke:#2d6a4f,color:#ffffff;
     classDef todo fill:#3d3d00,stroke:#7a7a00,color:#ffffff,stroke-dasharray: 5 3;
-    class A,B,C,D,F,G,H done;
-    class E todo;
+    class A,B,C,D,E,F,G,H done;
 ```
 
-Every stage is implemented **except tracking**, which is deliberately deferred until the detection
-baseline is understood.
+Every stage is implemented. Tracking was deliberately left until last, so the backend could be
+chosen against measured detection behaviour rather than guessed at.
 
 | Stage | Status | Where it lives |
 | --- | --- | --- |
@@ -89,10 +101,11 @@ baseline is understood.
 | Frame decoding | **Done** | `data/video.py` |
 | MegaDetector V6 inference | **Done** | `inference/megadetector.py` |
 | Confidence filtering | **Done** | `inference/filtering.py` |
-| Tracking | Not implemented, backend undecided | `tracking/` (planned) |
+| Tracking | **Done** (ByteTrack) | `tracking/bytetrack.py` |
 | Behaviour-label overlay | **Done** | `visualization/overlays.py` |
 | Video export | **Done** | `visualization/video.py` |
 | Accuracy vs ground truth | **Done** | `evaluation/detection.py` |
+| Track quality vs `ape_id` | **Done** | `evaluation/tracking.py` |
 
 See [`docs/obsidian/05 Technical/architecture.md`](docs/obsidian/05%20Technical/architecture.md) for the intended module boundaries.
 
@@ -349,28 +362,30 @@ environment, the checksummed manifest and the [reproducibility policy](#reproduc
 
 Working checklist:
 
-- [ ] 5–10 PanAf500 clips selected, justified and recorded in a checksummed manifest.
-- [ ] Frame extraction implemented and tested.
-- [ ] Pretrained MegaDetector V6 inference running over the sample.
-- [ ] A simple tracker integrated (SORT or ByteTrack), with the backend choice justified.
-- [ ] Dataset behaviour labels displayed beside detections, and compared against what is visible.
-- [ ] 2–3 annotated clips or GIFs in `artifacts/videos/`.
-- [ ] A populated research log covering every run, including failures.
-- [ ] A one-page findings write-up from
+- [x] 5–10 PanAf500 clips selected, justified and recorded in a checksummed manifest.
+- [x] Frame extraction implemented and tested.
+- [x] Pretrained MegaDetector V6 inference running over the sample.
+- [x] A simple tracker integrated (ByteTrack), with the backend choice justified.
+- [x] Dataset behaviour labels displayed beside detections, and compared against what is visible.
+- [x] 2–3 annotated clips or GIFs in `artifacts/videos/` (generated locally; not committed).
+- [x] A populated research log covering every run, including failures.
+- [x] A one-page findings write-up from
       [`reports/phase1_writeup_template.md`](reports/phase1_writeup_template.md).
 
 ## Known limitations
 
-- **The pipeline is not implemented.** Nothing in this repository has produced a detection.
 - **MegaDetector is not an ape detector.** It is a general animal/person/vehicle detector; the
   `animal` class covers everything from a chimpanzee to a duiker. It cannot tell you which species,
   which individual, or what the animal is doing.
-- **No quantitative evaluation.** Phase 1 output is qualitative. PanAf500 ships ground-truth boxes,
-  so a scored evaluation is possible later, but claiming a number now would be inventing one.
+- **Accuracy headlines are reported at one operating point** — confidence 0.20, IoU 0.50 — stated
+  with the numbers. Confidence *has* now been swept (0.05–0.50); IoU has not, and no mAP is claimed.
+  F1 peaks at the lowest threshold tested, so `configs/base.yaml` is not the best operating point,
+  only the documented one.
 - **Small, non-random sample.** 5–10 hand-picked clips cannot support claims about the dataset as a
   whole. Selection bias is expected and should be described in the write-up.
-- **The tracker is undecided.** No tracking library is installed beyond `supervision`, which
-  arrives as a PyTorch-Wildlife dependency and happens to include ByteTrack.
+- **Track quality is measured with a small metric set** — ID switches, fragmentation and coverage
+  against `ape_id`. MOTA and IDF1 are *not* implemented rather than half-implemented, because a
+  metric nobody has hand-checked is not a measurement.
 - **Colab sessions are ephemeral and time-limited**, which constrains how much footage can be
   processed in one pass.
 - **Camera-trap footage is hard**: night-time infrared, heavy occlusion, small distant subjects and
@@ -396,11 +411,11 @@ Phase 1 breaks down as:
 | Step | Goal | Status |
 | --- | --- | --- |
 | 1a | Repository scaffold, locked environment, config, CLI | **Done** |
-| 1b | Clip selection + manifest; frame extraction | Next |
-| 1c | Pretrained MegaDetector V6 inference + run metadata | Planned |
-| 1d | Tracker integration (SORT or ByteTrack, chosen from 1c evidence) | Planned |
-| 1e | Behaviour-label overlay + annotated clip export | Planned |
-| 1f | Qualitative evaluation + one-page write-up | Planned |
+| 1b | Clip selection + manifest; frame extraction | **Done** |
+| 1c | Pretrained MegaDetector V6 inference + run metadata | **Done** |
+| 1d | Tracker integration (ByteTrack, chosen from 1c evidence) | **Done** |
+| 1e | Behaviour-label overlay + annotated clip export | **Done** |
+| 1f | Quantitative + qualitative evaluation and write-up | In progress |
 | — | **Stretch:** animal pose model (DeepLabCut or ViTPose) on one clip — the on-ramp to Phase 2 | Planned |
 
 **Beyond Phase 1** — worth doing, but rigour *within* this phase rather than phases of the project:

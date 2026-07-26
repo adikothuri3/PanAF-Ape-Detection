@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from panaf_ape_detection import __version__
 from panaf_ape_detection.cli import app
+from panaf_ape_detection.manifest import MANIFEST_COLUMNS
 
 WriteConfig = Callable[..., Path]
 
@@ -41,8 +42,8 @@ def registered_command_names() -> set[str]:
 def test_only_implemented_commands_are_registered():
     """A command may only be registered once it is implemented and tested.
 
-    Tracking and standalone frame extraction are still unimplemented, so they
-    must stay absent rather than appear as stubs.
+    Standalone frame extraction is still unimplemented, so it must stay absent
+    rather than appear as a stub.
     """
     assert registered_command_names() == {
         "doctor",
@@ -51,6 +52,7 @@ def test_only_implemented_commands_are_registered():
         "fetch-clips",
         "detect",
         "evaluate",
+        "track",
     }
 
 
@@ -93,10 +95,10 @@ def test_doctor_runs_without_inference_extra():
         assert expected in result.output
 
 
-def test_doctor_states_that_the_pipeline_is_not_implemented():
+def test_doctor_says_it_only_inspects_the_environment():
     result = invoke("doctor")
 
-    assert "not implemented yet" in result.output
+    assert "only inspects the environment" in unwrap(result.output)
 
 
 def test_show_paths_reports_layout_and_artifacts():
@@ -187,3 +189,218 @@ def test_commands_are_read_only(command: str, tmp_path: Path, monkeypatch: pytes
 
     assert result.exit_code == 0, result.output
     assert list(tmp_path.iterdir()) == []
+
+
+# --------------------------------------------------------------------------- #
+# evaluate / track over saved detections
+#
+# Both read `artifacts/detections/`, so they can be exercised end to end with no
+# model, no video and no GPU -- a temporary repository root is enough.
+# --------------------------------------------------------------------------- #
+
+BOX = [10.0, 10.0, 110.0, 110.0]
+
+
+def _saved_run(
+    tmp_path: Path,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+    *,
+    confidence: float = 0.2,
+    scores: list[float] | None = None,
+    tracking: bool = False,
+) -> Path:
+    """Lay out a miniature repository: manifest, annotations, saved detections.
+
+    One clip, three frames, one annotated ape holding still, and one detection
+    per frame at *scores*.
+    """
+    import json
+
+    (tmp_path / "data" / "raw" / "panaf500" / "annotations").mkdir(parents=True)
+    (tmp_path / "artifacts" / "detections").mkdir(parents=True)
+
+    manifest = tmp_path / "data" / "manifest.csv"
+    digest = "a" * 64  # the loader requires a well-formed sha256, not a real one
+    manifest.write_text(
+        ",".join(MANIFEST_COLUMNS)
+        + "\n"
+        + f"clip-a,test,clip-a.mp4,clip-a.json,chimpanzee,,unit test,{digest},{digest},\n",
+        encoding="utf-8",
+    )
+
+    (tmp_path / "data" / "raw" / "panaf500" / "annotations" / "clip-a.json").write_text(
+        json.dumps(
+            {
+                "video": "clip-a",
+                "annotations": [
+                    {
+                        "frame_id": index + 1,
+                        "detections": [
+                            {
+                                "bbox": BOX,
+                                "ape_id": 0,
+                                "species": "chimpanzee",
+                                "behaviour": "walking",
+                            }
+                        ],
+                    }
+                    for index in range(3)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    per_frame_scores = scores if scores is not None else [0.9, 0.9, 0.9]
+    (tmp_path / "artifacts" / "detections" / "clip-a.json").write_text(
+        json.dumps(
+            {
+                "clip_id": "clip-a",
+                "model": {"name": "MegaDetectorV6", "confidence_threshold": confidence},
+                "video": {"width": 720, "height": 404, "fps": 24.0, "frame_count": 3},
+                "frames": [
+                    {
+                        "clip_id": "clip-a",
+                        "frame_index": index,
+                        "frame_width": 720,
+                        "frame_height": 404,
+                        "detections": [
+                            {
+                                "box": {
+                                    "x_min": BOX[0],
+                                    "y_min": BOX[1],
+                                    "x_max": BOX[2],
+                                    "y_max": BOX[3],
+                                },
+                                "confidence": score,
+                                "category_id": 0,
+                                "category_name": "animal",
+                            }
+                        ],
+                    }
+                    for index, score in enumerate(per_frame_scores)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config_data["data"]["manifest_path"] = "data/manifest.csv"
+    config_data["model"]["confidence_threshold"] = confidence
+    if tracking:
+        config_data["tracking"] = {
+            "enabled": True,
+            "backend": "bytetrack",
+            "minimum_track_length": 1,
+        }
+    return write_config(config_data)
+
+
+def test_evaluate_reads_saved_detections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    config = _saved_run(tmp_path, config_data, write_config)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("evaluate", "--config", str(config))
+
+    assert result.exit_code == 0, result.output
+    output = unwrap(result.output)
+    assert "clip-a" in output
+    # Three frames, one true positive each, nothing else.
+    assert "precision 1.0" in output
+    assert "recall 1.0" in output
+
+
+def test_evaluate_confidence_flag_re_scores_upward(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """Raising the threshold must actually discard the weaker detections."""
+    config = _saved_run(tmp_path, config_data, write_config, scores=[0.9, 0.3, 0.3])
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("evaluate", "--config", str(config), "--confidence", "0.5")
+
+    assert result.exit_code == 0, result.output
+    output = unwrap(result.output)
+    assert "re-scored at 0.50" in output
+    # One of three annotated frames still has a surviving detection.
+    assert "recall 0.3333" in output
+
+
+def test_evaluate_refuses_a_threshold_below_the_saved_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """Lowering it would silently measure detections that were never saved."""
+    config = _saved_run(tmp_path, config_data, write_config, confidence=0.2)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("evaluate", "--config", str(config), "--confidence", "0.05")
+
+    assert result.exit_code == 1
+    assert "below the 0.20" in unwrap(result.output)
+
+
+def test_evaluate_reports_when_nothing_has_been_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    config = _saved_run(tmp_path, config_data, write_config)
+    (tmp_path / "artifacts" / "detections" / "clip-a.json").unlink()
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("evaluate", "--config", str(config))
+
+    assert result.exit_code == 1
+    assert "No saved detections" in unwrap(result.output)
+
+
+def test_track_refuses_to_run_when_tracking_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    config = _saved_run(tmp_path, config_data, write_config, tracking=False)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("track", "--config", str(config))
+
+    assert result.exit_code == 1
+    assert "tracking.enabled is false" in unwrap(result.output)
+
+
+def test_track_measures_saved_detections_and_writes_metrics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """The one stationary ape should end up on a single track, with no switches."""
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import json
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("track", "--config", str(config))
+
+    assert result.exit_code == 0, result.output
+    written = tmp_path / "artifacts" / "metrics" / "clip-a_tracking.json"
+    metrics = json.loads(written.read_text(encoding="utf-8"))
+    assert metrics["clip_id"] == "clip-a"
+    assert metrics["annotated_individuals"] == 1
+    assert metrics["total_id_switches"] == 0
+    assert metrics["minimum_track_length"] == 1

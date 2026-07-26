@@ -74,6 +74,10 @@ service-account*.json
 *.ckpt
 *.safetensors
 *.bin
+# Partial downloads. PyTorch-Wildlife writes `MDV6-yolov9-c.pt<random>.tmp` while
+# fetching weights, and an interrupted run leaves a 46 MB file in the repo root
+# that none of the patterns above match -- `.tmp` is the suffix, not `.pt`.
+*.tmp
 # Root-anchored so they cannot shadow a future source package of the same name.
 /weights/
 /checkpoints/

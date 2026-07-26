@@ -1,10 +1,9 @@
 # Architecture
 
-**Status: partly implemented.** The foundation — `config.py`, `paths.py`, `types.py`, `runtime.py`,
-`provenance.py`, `manifest.py` and `cli.py` — exists and is tested. Every stage module below
-(`data/`, `inference/`, `tracking/`, `visualization/`, `evaluation/`, `pipeline/`) is still a
-design, marked `[planned]`, so that the next implementation task has a target rather than a blank
-page.
+**Status: implemented.** The foundation — `config.py`, `paths.py`, `types.py`, `runtime.py`,
+`provenance.py`, `manifest.py` and `cli.py` — and every stage module below (`data/`, `inference/`,
+`tracking/`, `visualization/`, `evaluation/`, `pipeline/`) exists and is tested. The layout below is
+what is on disk, not a plan.
 
 ## Two schema rules that are easy to get wrong
 
@@ -49,30 +48,31 @@ src/panaf_ape_detection/
 │                       producer of RunMetadata.
 ├── cli.py              Typer entry point. Thin: parses, delegates, prints.
 │
-├── data/               [planned]
+├── data/
 │   ├── manifest.py     Load and validate the clip manifest; verify checksums.
 │   ├── video.py        Decode clips, iterate frames, honour frame_stride.
 │   └── annotations.py  Read dataset-provided behaviour labels and boxes.
 │
-├── inference/          [planned]
+├── inference/
 │   ├── base.py         Detector protocol: frames in, Detection objects out.
 │   ├── megadetector.py PyTorch-Wildlife MegaDetector V6 adapter.
 │   └── filtering.py    Confidence thresholding and box post-processing.
 │
-├── tracking/           [planned]
+├── tracking/
 │   ├── base.py         Tracker protocol: Detection sequence -> TrackedDetection.
-│   └── bytetrack.py    Concrete backend (chosen after the detection baseline).
+│   ├── convert.py      Detection <-> supervision.Detections, one place only.
+│   └── bytetrack.py    ByteTrack adapter, plus drop_short_tracks.
 │
-├── visualization/      [planned]
+├── visualization/
 │   ├── overlays.py     Draw boxes, scores, track ids, behaviour labels.
 │   └── video.py        Encode annotated clips and GIFs.
 │
-├── evaluation/         [planned]
-│   └── qualitative.py  Failure-case tabulation and review helpers.
+├── evaluation/
+│   ├── detection.py    IoU matching, precision/recall/F1, by behaviour and size.
+│   └── tracking.py     ID switches, fragmentation and coverage against ape_id.
 │
-└── pipeline/           [planned]
-    ├── runner.py       Orchestration: wires stages together per config.
-    └── metadata.py     Build and persist RunMetadata.
+└── pipeline/
+    └── runner.py       Orchestration: wires stages together per config.
 ```
 
 ## Dependency direction
@@ -140,10 +140,11 @@ The MegaDetector variant and the tracker backend are fields in `configs/*.yaml`,
    weights do not carry the same terms. A variant buried in code is a licence obligation nobody can
    audit. See [`licensing.md`](licensing.md).
 
-The tracker backend is configuration for the same reason, plus one more: the choice is genuinely
-undecided. `TrackingBackend` enumerates `none`, `bytetrack` and `sort`, and the default config sets
-`enabled: false`. The decision will be made from Phase 1c evidence about how stable detections
-actually are — not guessed now.
+The tracker backend is configuration for the same reason. `TrackingBackend` enumerates `none`,
+`bytetrack` and `sort`; **`bytetrack` is implemented and is the default**, chosen from Phase 1c
+evidence rather than guessed. `sort` remains a valid config value with no implementation behind it,
+and `build_tracker` raises for it — running untracked while the config says otherwise would be worse
+than failing.
 
 ## Adding deployment adapters later
 

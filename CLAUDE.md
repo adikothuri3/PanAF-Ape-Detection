@@ -16,10 +16,11 @@ Notes are siblings of `docs/obsidian/.obsidian/`, never inside it: that director
 **configuration**, and anything placed there is not indexed as a note, so links and search would
 silently stop working.
 
-> **Current phase: Phase 1 "See" — sub-phase 1a (scaffold) complete and audited, 1b (clip
-> selection) next.** The stack is proven: `make smoke-detect` loads real weights and runs inference
-> end to end. But **no dataset has been downloaded and no clip annotated** — the only frames ever
-> put through the model were synthetic noise, so detection quality is entirely unmeasured.
+> **Current phase: Phase 1 "See" — steps 1-5 implemented; 1f (write-up) in progress.** The full
+> pipeline runs on real PanAf500 footage: clip selection, decoding, MegaDetector V6 inference,
+> ByteTrack tracking, behaviour-label overlay, annotated video, and accuracy measured against the
+> dataset's ground-truth boxes. Every number in the docs must trace to a file under
+> `artifacts/metrics/`; nothing is estimated.
 
 ## The project
 
@@ -45,11 +46,11 @@ Authority: [Four Phase Arc](docs/obsidian/01%20Onboarding/Four%20Phase%20Arc.md)
 ### Phase 1, in six steps
 
 1. **Set up** — ✅ done (uv, Python 3.11, locked env, published repo)
-2. **Get the data** — 5–10 PanAf500 clips, not all 7 million frames
-3. **Detect** — PyTorch-Wildlife (MegaDetector) per frame, boxes, stitched to video
-4. **Track** — stable IDs with SORT or ByteTrack
-5. **Compare** — show the dataset's action label beside detections; does it match?
-6. **Write it up** — one page: what worked, what failed, three improvements
+2. **Get the data** — ✅ done (10 purposively selected PanAf500 clips, checksummed manifest)
+3. **Detect** — ✅ done (PyTorch-Wildlife MegaDetector V6 per frame, stitched to annotated video)
+4. **Track** — ✅ done (ByteTrack via `supervision`; ID switches and fragmentation measured)
+5. **Compare** — ✅ done (dataset action label drawn beside detections; recall broken down by label)
+6. **Write it up** — in progress: `reports/phase1_findings_*.md`
 
 **Deliverable:** a GitHub repo, 2–3 annotated clips or GIFs, the write-up.
 **Done means:** someone else can clone, follow the README, and reproduce one annotated clip.
@@ -111,6 +112,23 @@ documentation: never describe an unimplemented stage as working.
 Never commit dataset files, video, frames, annotations, `data/sample_manifest.csv`, weights
 (`*.pt`, `*.pth`, `*.onnx`, `*.safetensors`), anything under `artifacts/`, notebook output cells, or
 `.env`. `data/raw/` is immutable; derived frames go to `data/interim/` or `artifacts/`.
+
+### Never run inference on CPU — use Colab
+
+**Model inference runs on an accelerator or not at all.** CUDA on Colab, Apple MPS locally. A CPU
+run does not fail: it produces correct results several times slower, so the cost shows up as a lost
+afternoon rather than an error. `runtime.require_accelerator()` therefore **refuses** CPU, and
+`MegaDetectorV6Runner` calls it — there is no path to a CPU run through the CLI.
+
+Anything heavier than a few frames belongs on a **Colab T4** via
+[`notebooks/phase1_colab.ipynb`](notebooks/phase1_colab.ipynb) — Runtime → Change runtime type →
+T4 GPU, *before* running any cell. All 10 clips run end to end there.
+
+`PANAF_ALLOW_CPU_INFERENCE=1` exists only for debugging a non-performance bug on a machine with no
+accelerator. **Nothing measured under it is reportable**, least of all a timing.
+
+`model.device: auto` prefers CUDA, then MPS, and raises rather than silently choosing CPU. Never
+change a config to `cpu` to make a run "work".
 
 ### Do not fine-tune
 
@@ -197,6 +215,18 @@ detector.predictor.args.device = device  # args
 Never record the *requested* device in `RunMetadata` — record what
 `runtime.module_device(detector)` reports. `scripts/smoke_detect.py` is the working reference.
 Full detail: [model docs](docs/obsidian/05%20Technical/model.md).
+
+### `det_conf_thres` is ignored unless passed — the same trap, second instance
+
+`single_image_detection(img, det_conf_thres=0.2)`. Omit it and **inference runs at 0.2 whatever
+`model.confidence_threshold` says**; a post-inference filter then hides this completely while the
+configured value happens to be 0.2, and every threshold below it returns identical results.
+
+Always pass it: `single_image_detection(frame, det_conf_thres=config.model.confidence_threshold)`.
+
+**The rule this library keeps teaching: an argument being accepted is no evidence it is applied.**
+Verify by observing behaviour — where the tensors live, what scores come back — never by the absence
+of an exception.
 
 ## Smoke tests
 

@@ -1,6 +1,6 @@
 """Command-line interface for the Phase 1 scaffold.
 
-Only honest, setup-oriented commands exist right now:
+The setup-oriented commands, none of which touch a model:
 
 ``doctor``
     Report the environment a run would execute in.
@@ -11,7 +11,8 @@ Only honest, setup-oriented commands exist right now:
 
 ``fetch-clips`` selects and downloads a PanAf500 sample; ``detect`` runs
 MegaDetector over it and writes annotated video; ``evaluate`` recomputes accuracy
-from saved detections. Tracking remains unimplemented and therefore unregistered.
+from saved detections, and ``track`` re-tracks them and measures identity
+quality. Both read ``artifacts/detections/``, so neither needs a GPU.
 
 This module must import cleanly without the ``inference`` extra installed; every
 machine-learning import happens lazily inside :func:`_probe_optional_dependency`.
@@ -26,7 +27,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
@@ -34,9 +35,14 @@ from rich.table import Table
 
 from panaf_ape_detection import __version__
 from panaf_ape_detection.config import Config, ConfigError, load_config
+from panaf_ape_detection.evaluation.detection import MatchCounts
+from panaf_ape_detection.evaluation.tracking import ClipTrackEvaluation
+from panaf_ape_detection.manifest import ManifestRow
 from panaf_ape_detection.paths import RepositoryPaths, repository_root
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections.abc import Iterable, Iterator
+
     from panaf_ape_detection.inference.base import Detector
     from panaf_ape_detection.pipeline.runner import ClipResult
 
@@ -196,6 +202,15 @@ def doctor() -> None:
     environment.add_row("Apple MPS available", mps_status)
     console.print(environment)
 
+    # Inference is refused on CPU (runtime.require_accelerator), so say so here
+    # rather than letting the first `detect` be where that is discovered.
+    if _OK not in (cuda_status, mps_status):
+        console.print(
+            "[yellow]No accelerator here.[/yellow] Inference will be refused: this project "
+            "never runs models on CPU.\nRun on a Colab GPU instead — "
+            "[bold]notebooks/phase1_colab.ipynb[/bold] (Runtime → Change runtime type → T4 GPU)."
+        )
+
     optional = Table(title="Optional inference stack", show_header=True, header_style="bold")
     optional.add_column("Package")
     optional.add_column("Installed")
@@ -238,8 +253,8 @@ def doctor() -> None:
         )
 
     console.print(
-        "\n[dim]Note: detection, tracking and annotation are not implemented yet. "
-        "This command only inspects the environment.[/dim]"
+        "\n[dim]Note: this command only inspects the environment; it loads no model "
+        "and reads no data.[/dim]"
     )
 
 
@@ -381,7 +396,11 @@ def _build_detector(config: Config) -> Detector:
 
     with console.status(f"Loading {config.model.variant} (first run downloads weights)..."):
         try:
-            return MegaDetectorV6Runner(config.model.variant, device=config.model.device)
+            return MegaDetectorV6Runner(
+                config.model.variant,
+                device=config.model.device,
+                confidence_threshold=config.model.confidence_threshold,
+            )
         except Exception as exc:
             _error_console.print(f"[red]Could not load the detector:[/red] {exc}")
             raise typer.Exit(code=1) from exc
@@ -424,6 +443,41 @@ def _report(results: list[ClipResult]) -> None:
         "[dim]MegaDetector emits a generic 'animal' class, so a detection counts as correct when "
         "it localises an annotated ape. No claim about species is made.[/dim]"
     )
+
+    tracked = [result for result in results if result.track_evaluation is not None]
+    if tracked:
+        console.print()
+        console.print(_track_table(result.track_evaluation for result in tracked))
+        console.print(_TRACK_LEGEND)
+
+
+def _track_table(evaluations: Iterable[ClipTrackEvaluation | None]) -> Table:
+    """Build the per-clip track-quality table shared by ``detect`` and ``track``."""
+    table = Table(title="Track quality", show_header=True, header_style="bold")
+    for column in ("Clip", "Frames", "Apes", "Tracks", "ID sw.", "Frag.", "Coverage", "MT", "ML"):
+        table.add_column(column)
+    for evaluation in evaluations:
+        if evaluation is None:  # pragma: no cover - callers filter these out
+            continue
+        table.add_row(
+            evaluation.clip_id,
+            str(evaluation.frames_evaluated),
+            str(len(evaluation.individuals)),
+            str(evaluation.predicted_tracks),
+            str(evaluation.total_id_switches),
+            f"{evaluation.mean_fragmentation:.2f}",
+            f"{evaluation.mean_coverage:.3f}",
+            str(evaluation.mostly_tracked),
+            str(evaluation.mostly_lost),
+        )
+    return table
+
+
+_TRACK_LEGEND = (
+    "[dim]Frag. is predicted tracks per annotated ape (1.00 is ideal, 0 means never tracked). "
+    "MT/ML count individuals covered in >=80% / <=20% of their frames. Fragmentation is bounded "
+    "by detection recall: a box that was never detected cannot be associated.[/dim]"
+)
 
 
 @app.command("fetch-clips")
@@ -494,61 +548,112 @@ def detect(
     console.print(f"Metrics:         {artifacts / 'metrics'}")
 
 
-@app.command()
-def evaluate(
-    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
-) -> None:
-    """Recompute accuracy from saved detections, without re-running inference.
+def _saved_detection_documents(
+    loaded: Config,
+) -> Iterator[tuple[ManifestRow, str, dict[str, Any]]]:
+    """Yield ``(row, annotation filename, document)`` per clip with saved detections.
 
-    Reads ``artifacts/detections/`` and compares against ground truth, so a
-    threshold can be reconsidered without spending GPU time again.
+    Rows with no stored detections, or no annotation file to compare against,
+    are skipped -- both are ordinary when only part of the manifest has been
+    run locally.
+
+    Raises:
+        typer.Exit: If the manifest cannot be read.
     """
     import json as _json
 
-    from panaf_ape_detection.data.annotations import load_ground_truth
-    from panaf_ape_detection.evaluation.detection import evaluate_clip
     from panaf_ape_detection.pipeline.runner import load_manifest
-    from panaf_ape_detection.types import Detection as _Detection
 
-    loaded = _load_or_exit(config)
     paths = loaded.repository_paths()
-    raw_root = paths.raw_data_dir / "panaf500"
-
     try:
         rows = load_manifest(loaded.data.manifest_path)
     except FileNotFoundError as exc:
         _error_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
 
-    table = Table(title="Accuracy from saved detections", show_header=True, header_style="bold")
-    for column in ("Clip", "P", "R", "F1", "mIoU"):
+    for row in rows:
+        stored = paths.artifacts_dir / "detections" / f"{row.clip_id}.json"
+        annotation = row.annotation_filename
+        if not stored.is_file() or not annotation:
+            continue
+        yield row, annotation, _json.loads(stored.read_text(encoding="utf-8"))
+
+
+@app.command()
+def evaluate(
+    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
+    confidence: Annotated[
+        float | None,
+        typer.Option(
+            "--confidence",
+            min=0.0,
+            max=1.0,
+            help="Re-score at this threshold instead of the one used at detection time.",
+        ),
+    ] = None,
+) -> None:
+    """Recompute accuracy from saved detections, without re-running inference.
+
+    Reads ``artifacts/detections/`` and compares against ground truth, so a
+    threshold can be reconsidered without spending GPU time again.
+
+    ``--confidence`` can only be raised, never lowered: the saved detections
+    were already filtered at detection time, so boxes below that threshold were
+    never written and cannot be recovered here. Lowering it requires re-running
+    ``detect`` with a lower ``model.confidence_threshold``.
+    """
+    from panaf_ape_detection.data.annotations import load_ground_truth
+    from panaf_ape_detection.evaluation.detection import evaluate_clip
+    from panaf_ape_detection.inference.filtering import filter_by_confidence
+    from panaf_ape_detection.types import Detection as _Detection
+
+    loaded = _load_or_exit(config)
+    raw_root = loaded.repository_paths().raw_data_dir / "panaf500"
+
+    title = "Accuracy from saved detections"
+    if confidence is not None:
+        title += f" (re-scored at {confidence:.2f})"
+    table = Table(title=title, show_header=True, header_style="bold")
+    for column in ("Clip", "Kept", "P", "R", "F1", "mIoU"):
         table.add_column(column)
 
     found = 0
-    for row in rows:
-        stored = paths.artifacts_dir / "detections" / f"{row.clip_id}.json"
-        if not stored.is_file() or not row.annotation_filename:
-            continue
-        document = _json.loads(stored.read_text(encoding="utf-8"))
+    totals = [0, 0, 0]  # true positives, false positives, false negatives
+    for row, annotation, document in _saved_detection_documents(loaded):
+        stored_threshold = float(document["model"]["confidence_threshold"])
+        threshold = stored_threshold if confidence is None else confidence
+        if threshold < stored_threshold:
+            _error_console.print(
+                f"[red]--confidence {threshold:.2f} is below the {stored_threshold:.2f} "
+                f"used when {row.clip_id} was detected.[/red]\n"
+                "Boxes under that score were never saved, so the result would look like a "
+                "genuine measurement while silently missing detections. Re-run "
+                "[bold]detect[/bold] with a lower model.confidence_threshold instead."
+            )
+            raise typer.Exit(code=1)
+
+        # `evaluate_clip` records the threshold but does not apply it, so the
+        # filtering has to happen here for --confidence to mean anything.
         predictions = {
-            frame["frame_index"]: [_Detection(**d) for d in frame["detections"]]
+            frame["frame_index"]: filter_by_confidence(
+                [_Detection(**d) for d in frame["detections"]], threshold
+            )
             for frame in document["frames"]
         }
         truth = load_ground_truth(
-            raw_root / "annotations" / row.annotation_filename,
+            raw_root / "annotations" / annotation,
             frame_width=document["video"]["width"],
             frame_height=document["video"]["height"],
             clip_id=row.clip_id,
         )
-        evaluation = evaluate_clip(
-            row.clip_id,
-            predictions,
-            truth,
-            confidence_threshold=document["model"]["confidence_threshold"],
-        )
+        evaluation = evaluate_clip(row.clip_id, predictions, truth, confidence_threshold=threshold)
         counts = evaluation.overall
+        totals[0] += counts.true_positives
+        totals[1] += counts.false_positives
+        totals[2] += counts.false_negatives
         table.add_row(
             row.clip_id,
+            str(counts.true_positives + counts.false_positives),
             f"{counts.precision:.3f}",
             f"{counts.recall:.3f}",
             f"{counts.f1:.3f}",
@@ -563,6 +668,127 @@ def evaluate(
         )
         raise typer.Exit(code=1)
     console.print(table)
+
+    pooled = MatchCounts(
+        true_positives=totals[0], false_positives=totals[1], false_negatives=totals[2]
+    )
+    console.print(
+        f"\n[bold]Pooled over {found} clip(s)[/bold]  precision {pooled.precision:.4f} · "
+        f"recall {pooled.recall:.4f} · F1 {pooled.f1:.4f}"
+    )
+
+
+@app.command()
+def track(
+    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
+    minimum_track_length: Annotated[
+        int | None,
+        typer.Option("--min-track-length", min=1, help="Override tracking.minimum_track_length."),
+    ] = None,
+) -> None:
+    """Track saved detections and measure identity quality against ``ape_id``.
+
+    Runs the configured tracker over ``artifacts/detections/`` rather than over
+    video, so tracker settings can be explored on a laptop in seconds without
+    re-running the detector. Track ids already stored in those files are
+    discarded and recomputed, so the numbers always match the settings printed.
+
+    Reports ID switches, fragmentation and coverage per clip, and writes
+    ``artifacts/metrics/<clip>_tracking.json``.
+    """
+    import json as _json
+
+    from panaf_ape_detection.data.annotations import load_ground_truth
+    from panaf_ape_detection.evaluation.tracking import evaluate_tracking
+    from panaf_ape_detection.pipeline.runner import build_tracker
+    from panaf_ape_detection.tracking.bytetrack import drop_short_tracks
+    from panaf_ape_detection.types import Detection as _Detection
+
+    loaded = _load_or_exit(config)
+    if not loaded.tracking.enabled:
+        _error_console.print(
+            "[red]tracking.enabled is false in this config.[/red] Enable it to run tracking."
+        )
+        raise typer.Exit(code=1)
+
+    paths = loaded.repository_paths()
+    raw_root = paths.raw_data_dir / "panaf500"
+    minimum = minimum_track_length or loaded.tracking.minimum_track_length
+
+    evaluations: list[ClipTrackEvaluation] = []
+    for row, annotation, document in _saved_detection_documents(loaded):
+        video = document["video"]
+        try:
+            # A fresh tracker per clip, sized and timed from that clip.
+            tracker = build_tracker(
+                loaded,
+                frame_rate=float(video["fps"]),
+                frame_width=int(video["width"]),
+                frame_height=int(video["height"]),
+            )
+        except ValueError as exc:
+            _error_console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1) from exc
+        except ImportError as exc:
+            _error_console.print(
+                "[red]The inference extra is not installed.[/red]\n"
+                "Tracking needs [bold]supervision[/bold]; run "
+                "[bold]uv sync --extra inference[/bold]."
+            )
+            raise typer.Exit(code=1) from exc
+        assert tracker is not None  # tracking.enabled was checked above
+
+        # Frame order matters: a tracker fed frames out of order produces
+        # meaningless motion estimates, and JSON preserves file order only.
+        frames = sorted(document["frames"], key=lambda frame: int(frame["frame_index"]))
+        tracked: dict[int, list[Any]] = {}
+        for frame in frames:
+            # Rebuild as plain Detections so any stored track_id is ignored.
+            detections = [
+                _Detection(
+                    box=d["box"],
+                    confidence=d["confidence"],
+                    category_id=d["category_id"],
+                    category_name=d["category_name"],
+                )
+                for d in frame["detections"]
+            ]
+            tracked[int(frame["frame_index"])] = tracker.update(detections)
+
+        tracked = dict(drop_short_tracks(tracked, minimum))
+        truth = load_ground_truth(
+            raw_root / "annotations" / annotation,
+            frame_width=video["width"],
+            frame_height=video["height"],
+            clip_id=row.clip_id,
+        )
+        evaluation = evaluate_tracking(row.clip_id, tracked, truth)
+
+        destination = paths.artifacts_dir / "metrics" / f"{row.clip_id}_tracking.json"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            _json.dumps(
+                {**evaluation.as_dict(), "minimum_track_length": minimum}, indent=2, sort_keys=True
+            ),
+            encoding="utf-8",
+        )
+
+        evaluations.append(evaluation)
+
+    if not evaluations:
+        _error_console.print(
+            "[yellow]No saved detections found.[/yellow] "
+            "Run [bold]panaf-phase1 detect[/bold] first."
+        )
+        raise typer.Exit(code=1)
+
+    console.print(_track_table(evaluations))
+    console.print(_TRACK_LEGEND)
+    console.print(
+        f"\n[dim]tracker {loaded.tracking.backend.value}, minimum track length {minimum} "
+        f"frame(s), confidence {loaded.model.confidence_threshold:.2f}[/dim]"
+    )
+    console.print(f"Track metrics: {paths.artifacts_dir / 'metrics'}")
 
 
 def main() -> None:

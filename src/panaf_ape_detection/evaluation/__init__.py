@@ -17,13 +17,21 @@ from panaf_ape_detection.evaluation.detection import (
     match_frame,
     size_band,
 )
+from panaf_ape_detection.evaluation.tracking import (
+    ClipTrackEvaluation,
+    IndividualTrackEvaluation,
+    evaluate_tracking,
+)
 
 __all__ = [
     "ClipEvaluation",
+    "ClipTrackEvaluation",
     "FrameMatch",
+    "IndividualTrackEvaluation",
     "MatchCounts",
     "SizeBand",
     "evaluate_clip",
+    "evaluate_tracking",
     "intersection_over_union",
     "match_frame",
     "size_band",

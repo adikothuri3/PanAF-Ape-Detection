@@ -20,8 +20,10 @@ paths:
 data:
   # Created by you from data/sample_manifest.example.csv once clips are chosen.
   manifest_path: data/sample_manifest.csv
-  # Phase 1 deliberately works on a small, hand-picked sample.
-  max_clips: 8
+  # Phase 1 deliberately works on a small, hand-picked sample. The manifest
+  # holds 10 clips; this must not cap it below that, or a "full run" silently
+  # leaves clips out.
+  max_clips: 10
   # 1 = every decoded frame. Raise this to sample frames on slow hardware.
   frame_stride: 1
 
@@ -33,13 +35,22 @@ model:
   variant: MDV6-yolov9-c
   confidence_threshold: 0.2
   # auto | cpu | cuda | mps
+  #
+  # POLICY: inference never runs on CPU. `cpu` is a valid value to the schema but
+  # the detector refuses it (runtime.require_accelerator) -- a CPU run does not
+  # fail, it just costs hours, which is worse. `auto` picks CUDA, then Apple MPS,
+  # and raises if neither exists. If this machine has no accelerator, run on a
+  # Colab GPU: notebooks/phase1_colab.ipynb.
   device: auto
 
 tracking:
-  # Not implemented yet. The backend is chosen after the detection baseline
-  # is working; see docs/obsidian/05 Technical/architecture.md.
-  enabled: false
-  backend: none
+  # ByteTrack, via supervision -- no new dependency, and its second association
+  # pass over low-confidence boxes targets exactly the detector flicker this
+  # baseline produces. See docs/obsidian/05 Technical/architecture.md.
+  enabled: true
+  backend: bytetrack
+  # Tracks appearing in fewer frames than this are dropped after the clip is
+  # tracked; a two-frame track is detector flicker, not an animal.
   minimum_track_length: 5
 
 video:

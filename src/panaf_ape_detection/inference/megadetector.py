@@ -24,7 +24,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from panaf_ape_detection.runtime import module_device, resolve_device
+from panaf_ape_detection.runtime import module_device, require_accelerator, resolve_device
 from panaf_ape_detection.types import BoundingBox, Detection, DeviceKind
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -36,6 +36,21 @@ logger = logging.getLogger(__name__)
 
 CLASS_NAMES: dict[int, str] = {0: "animal", 1: "person", 2: "vehicle"}
 """MegaDetector's entire output space. Not species. Not behaviour."""
+
+
+DEFAULT_DETECTION_THRESHOLD = 0.2
+"""The threshold PyTorch-Wildlife applies when none is passed.
+
+``YOLOV8Base.single_image_detection(img, det_conf_thres=0.2)``. Repeated here
+only so the default is visible; real runs pass the configured value.
+
+**This was a silent bug for one full round of experiments.** The adapter filtered
+detections at ``model.confidence_threshold`` *after* inference but never told the
+model, so every run inferred at 0.2. Because the configured value also happened to
+be 0.2, the numbers were correct -- but a sweep down to 0.05 returned byte-identical
+results, which is how it was caught. Same shape as the ``device=`` bug: a value
+accepted, stored, and never applied where it mattered.
+"""
 
 
 class DeviceMismatchError(RuntimeError):
@@ -55,6 +70,7 @@ class MegaDetectorV6Runner:
         *,
         device: DeviceKind = DeviceKind.AUTO,
         model_name: str = "MegaDetectorV6",
+        confidence_threshold: float = DEFAULT_DETECTION_THRESHOLD,
     ) -> None:
         """Load the detector and pin it to a verified device.
 
@@ -63,6 +79,11 @@ class MegaDetectorV6Runner:
                 the library's own defaults raise ``ValueError``.
             device: Requested device; ``auto`` resolves by availability.
             model_name: Detector family, recorded in run metadata.
+            confidence_threshold: Score below which the *model* discards a box.
+                Passed to every inference call. **This must be set from
+                configuration**: the library's own default is 0.2, so leaving it
+                alone silently pins every run to 0.2 no matter what the config
+                says, and a threshold sweep below that returns identical results.
 
         Raises:
             ValueError: If *variant* is not accepted by the installed library.
@@ -71,7 +92,9 @@ class MegaDetectorV6Runner:
         """
         self._model_name = model_name
         self._variant = variant
-        self._device = resolve_device(device)
+        self._confidence_threshold = confidence_threshold
+        # Policy: inference never runs on CPU. See runtime.require_accelerator.
+        self._device = require_accelerator(resolve_device(device))
         self._frames_seen = 0
         self._seconds_spent = 0.0
 
@@ -134,7 +157,7 @@ class MegaDetectorV6Runner:
 
         blank = np.zeros((64, 64, 3), dtype=np.uint8)
         try:
-            self._model.single_image_detection(blank)
+            self._model.single_image_detection(blank, det_conf_thres=self._confidence_threshold)
         except Exception:
             logger.debug("warm-up inference failed; continuing", exc_info=True)
 
@@ -175,7 +198,10 @@ class MegaDetectorV6Runner:
             :class:`~panaf_ape_detection.types.FrameDetections` rejects that.
         """
         started = time.perf_counter()
-        raw = self._model.single_image_detection(frame)
+        # det_conf_thres is not optional in practice: omitting it takes the
+        # library's 0.2 default, which is a second threshold nothing in this
+        # project controls. See DEFAULT_DETECTION_THRESHOLD.
+        raw = self._model.single_image_detection(frame, det_conf_thres=self._confidence_threshold)
         self._seconds_spent += time.perf_counter() - started
         self._frames_seen += 1
 

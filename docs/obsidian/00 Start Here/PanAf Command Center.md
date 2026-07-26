@@ -1,8 +1,8 @@
 ---
 tags: [command-center, start-here]
 status: active
-phase: "Phase 1 — See · scaffold complete (1a), clip selection next (1b)"
-updated: 2026-07-24
+phase: "Phase 1 — See · steps 1-6 complete; cheap experiments before any fine-tuning"
+updated: 2026-07-26
 ---
 
 # PanAf Command Center
@@ -14,50 +14,73 @@ updated: 2026-07-24
 
 ## Current Status
 
-🟢 **Detection pipeline working and measured on real PanAf500 footage.**
+🟢 **Full Phase 1 pipeline working and measured on all 10 clips.**
 
-The environment, typed config, runtime layer, schemas, setup CLI, tests, CI and documentation are in
-place and green (**190 tests, 18 verification checks**, CI passing on `main`). The repo is published
-at [adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
+Detection, tracking, overlay, video export and evaluation all run end to end. Tests and checks are
+green (**281 tests, 19 verification checks**). The repo is published at
+[adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
 
-10 PanAf500 clips downloaded (23.4 MB), **3 processed over 1080 frames**. Measured at confidence
-0.20 / IoU 0.50 on verified MPS:
+**All 10 clips, 3600 frames, 4985 annotated boxes**, confidence 0.20 / IoU 0.50, verified MPS. Run
+twice, so the tracker's effect is isolated rather than confounded:
 
-| | Precision | Recall | F1 | mean IoU |
+| | Precision | Recall | F1 | Pooled mean IoU |
 |---|---|---|---|---|
-| **Overall** | **0.854** | **0.411** | **0.555** | 0.831 |
+| Detector only | 0.874 | 0.386 | 0.536 | 0.825 |
+| + ByteTrack | **0.917** | 0.353 | 0.509 | 0.832 |
 
-**Precise but insensitive** — it rarely invents an ape (7 false positives across 67 empty frames) but
-misses about three in five. Failure concentrates in arboreal postures (`hanging` 0.000,
-`climbing_up` 0.017), infrared night footage (one clip at recall 0.009) and small subjects (0.104).
+Tracking against `ape_id`: 23 individuals, 29 tracks, **17 ID switches**, fragmentation **1.35**,
+coverage 0.353. ByteTrack holds an ape it can see; coverage is capped by detection recall.
 
-Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-25.md).
-**7 clips remain**, to be run on the Colab T4.
+**Precise but insensitive at 0.20 — and that threshold turned out to be the problem.** Swept over the
+same 10 clips, F1 peaks at the *lowest* value tested:
+
+| Confidence | Precision | Recall | F1 |
+|---|---|---|---|
+| **0.05** | 0.628 | **0.563** | **0.594** |
+| 0.20 *(config default)* | 0.874 | 0.386 | 0.536 |
+| 0.50 | 0.943 | 0.280 | 0.432 |
+
+The recovered detections land almost entirely on the clips that looked hopeless: the near-dark clip
+goes from **0 detections in 360 frames to recall 0.433**, `hanging` from 0.102 to 0.527. Low contrast
+depresses confidence rather than preventing detection.
+
+Getting that number required fixing a **second silently-ignored PyTorch-Wildlife parameter**:
+`det_conf_thres` was never passed, so every run inferred at the library's 0.2 default. See
+[[model]].
+
+Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-26.md).
 
 ## Current Phase
 
-**[[Four Phase Arc|Phase 1 — See]]**, sub-phase **1a complete**.
+**[[Four Phase Arc|Phase 1 — See]]**, all six steps complete.
 
 Detect and track great apes in PanAf500 camera-trap video, overlay the dataset's behaviour labels,
 and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4 Embody.
 
 ## Current Active Task
 
-**None active.** Phase 1b–1f closed on 2026-07-25 with the detection pipeline and first measurements.
+**None active.** Phase 1 steps 1-6 closed on 2026-07-26 with the full 10-clip run, tracking, and
+the findings write-up.
 
 ## Next Recommended Task
 
-**Finish the sample, then sweep the threshold — before any fine-tuning.**
+**The threshold sweep is done and it changed the plan. In this order:**
 
-1. Run the remaining **7 clips** on a Colab T4 via [the notebook](../../../notebooks/phase1_colab.ipynb).
-2. **Confidence sweep.** Precision 0.854 against recall 0.411 says the operating point is mistuned
-   for this footage. `panaf-phase1 evaluate` recomputes from saved detections, so a sweep costs no
-   GPU time at all. Cheapest possible experiment; do it first.
+1. **Extend the sweep below 0.05.** F1 was still rising at the bottom of the swept range, so the
+   optimum has not been found. One re-run at 0.01 plus a free `evaluate --confidence` sweep.
+2. **Decide the operating point, then change `configs/base.yaml`.** 0.05 is measured as better than
+   0.20 on F1 *for the detector*. It is worth **nothing** once tracking is applied: `sv.ByteTrack`
+   discards anything scoring ≤ 0.1 and needs `activation + 0.1` to start a track, and 87% of the
+   recovered detections in the hardest clip fall below that floor. Tracking at 0.05 gives identical
+   coverage to 0.20 with more ID switches. So the decision is really *which output is the product* —
+   and if it is tracks, the question is whether ByteTrack is the right tracker for footage whose hard
+   cases score 0.05-0.10.
 3. **Variant comparison.** `MDV6-yolov10-e` is larger and higher-resolution. Config-only change.
-4. Only then consider fine-tuning, and target the measured gaps — arboreal postures, infrared, small
-   subjects — rather than the average.
 
-Tracking (ByteTrack) is still deferred; `ape_id` ground truth is waiting for it.
+Contrast preprocessing has dropped down the list: §8 shows the model already responds to those
+subjects, just weakly, so equalisation would be lifting scores rather than creating detections.
+
+Fine-tuning stays last, and the case for it is now weaker than it looked this morning.
 
 ## Reading Progress
 
@@ -181,10 +204,11 @@ runs ruff on edited Python only — the full gate stays manual.
   three-line fix and the verification helper are in [[model|MegaDetector variants]]; Phase 1c must record
   the device `runtime.module_device()` reports, never the requested one.
 - Annotation **file format** is unverified; the label list is not. See [[dataset|the nine action labels]].
-- Tracker backend undecided by design — chosen from 1c evidence. `sv.ByteTrack` is confirmed working
-  under the locked NumPy 2.x.
-- Detection **quality is entirely unmeasured** — the only frames run through the model were
-  synthetic noise.
+- Tracker backend chosen from 1c evidence: **ByteTrack**, via `supervision`, no new dependency. Its
+  low-confidence second association pass targets exactly the detector flicker a recall-0.4 baseline
+  produces.
+- **MOTA and IDF1 are not implemented**, deliberately. ID switches, fragmentation and coverage are,
+  each checked against a worked example.
 - **Tracked results must use `TrackedFrameDetections`.** A plain `FrameDetections` silently drops
   `track_id` and `behavior_label` on write; see [architecture](../05%20Technical/architecture.md).
 - Manifest **loading and checksum verification** are not implemented — `manifest.py` is the schema

@@ -153,7 +153,7 @@ plugins = ["pydantic.mypy"]
 # listed; extend this list (torchvision, PytorchWildlife, cv2, supervision,
 # imageio, ...) as the pipeline modules land, so that `warn_unused_configs`
 # keeps the list honest.
-module = ["torch.*", "numpy.*", "cv2.*", "imageio.*", "PytorchWildlife.*"]
+module = ["torch.*", "numpy.*", "cv2.*", "imageio.*", "PytorchWildlife.*", "supervision.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

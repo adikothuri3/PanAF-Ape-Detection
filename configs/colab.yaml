@@ -33,11 +33,14 @@ model:
   model_name: MegaDetectorV6
   variant: MDV6-yolov9-c
   confidence_threshold: 0.2
+  # Colab T4. Set the runtime to GPU *before* running anything: Runtime ->
+  # Change runtime type -> T4 GPU. Inference never runs on CPU (see base.yaml),
+  # so this fails fast on a CPU runtime rather than running for hours.
   device: cuda
 
 tracking:
-  enabled: false
-  backend: none
+  enabled: true
+  backend: bytetrack
   minimum_track_length: 5
 
 video:

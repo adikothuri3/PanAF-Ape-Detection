@@ -115,6 +115,35 @@ the move to MPS.
 The Phase 1c adapter must do this and record the **verified** device in `RunMetadata`, not the
 requested one.
 
+### ⚠️ `det_conf_thres` is ignored unless you pass it — the model runs at 0.2
+
+The second parameter of this shape, found the same way as the first: by observing behaviour rather
+than trusting the API.
+
+```text
+YOLOV8Base.single_image_detection(self, img, img_path=None, det_conf_thres=0.2, id_strip=None)
+```
+
+Call it without `det_conf_thres` and **inference happens at 0.2 whatever your configuration says.**
+A pipeline that filters detections at its configured threshold *afterwards* looks correct as long as
+the configured value is also 0.2 — and produces byte-identical output for every threshold below it.
+
+That is exactly what happened here. A sweep down to 0.05 returned the 0.20 numbers to four decimal
+places: 2203 detections, minimum confidence 0.2002, no boxes below 0.20. The identity of the results
+is the only symptom; nothing raises, nothing warns.
+
+```python
+raw = model.single_image_detection(frame, det_conf_thres=config.model.confidence_threshold)
+```
+
+`inference/megadetector.py` records the library default as `DEFAULT_DETECTION_THRESHOLD` and asserts
+in `tests/test_megadetector.py` that it still matches the installed signature — so an upstream change
+breaks a test instead of silently moving every published number.
+
+**The generalisation, now that it has happened twice:** in this library, a constructor or call
+argument being *accepted* is no evidence it is *applied*. Verify by observing what the model does —
+where its tensors live, what scores come back — never by the absence of an exception.
+
 ### The upstream defaults are broken — always set the variant explicitly
 
 Verified against the installed PyTorch-Wildlife 1.3.0:
@@ -137,8 +166,12 @@ A detection count is meaningless without both.
 **Confidence threshold** trades recall against precision, continuously. The same clip at 0.1 and
 0.5 will report substantially different numbers of apes, and neither is "the" answer. A result that
 does not state its threshold cannot be compared with anything, including a later run of itself.
-Phase 1's `configs/base.yaml` uses `0.2` as a starting point chosen to favour recall — it is a
-starting point to be revised from evidence, not a recommendation.
+Phase 1's `configs/base.yaml` used `0.2` as a starting point chosen to favour recall. **Evidence has
+now revised it.** Swept over 10 clips, F1 rises monotonically as the threshold falls — 0.536 at 0.20
+against **0.594 at 0.05** — and the recovered detections land almost entirely on the low-contrast
+clips, where `hanging` recall goes 0.102 → 0.527. See
+[the findings write-up](../../../reports/phase1_findings_2026-07-26.md) §8. The curve had not turned
+over at 0.05, so the optimum may be lower still.
 
 **Variant** determines the architecture and weights entirely. `MDV6-yolov9-c` and `MDV6-yolov10-e`
 are different models.
@@ -187,6 +220,26 @@ Two things worth knowing in advance:
   detections turn out to be stable and the problem is elsewhere, SORT's simplicity is worth more.
 
 Whichever is chosen, record the reason in the experiment log. "It was the default" is not a reason.
+
+### ⚠️ ByteTrack's floor at 0.1 — the third ignored-parameter trap
+
+`track_activation_threshold` does **not** open the tracker to everything the detector kept. Two
+values are hardcoded in `sv.ByteTrack` and cannot be configured:
+
+```python
+inds_low = scores > 0.1                                    # <= 0.1 discarded outright
+self.det_thresh = self.track_activation_threshold + 0.1    # new tracks need activation + 0.1
+```
+
+Measured over the 10-clip sample: lowering the detector to 0.05 raises detector recall 0.386 → 0.563
+but leaves tracking coverage at 0.353 and *increases* ID switches, because 87% of the newly recovered
+detections in the hardest clip score at or below 0.1. See
+[the findings write-up](../../../reports/phase1_findings_2026-07-26.md) §7.1.
+
+**Three parameters in one day** — `device=`, `det_conf_thres`, `track_activation_threshold` — that
+are accepted and do not do what their names imply. The first two were upstream ignoring a value; this
+one is a name that describes less than it seems to. The rule is the same: verify by observing
+behaviour.
 
 ## Future work: comparing variants
 

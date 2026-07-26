@@ -57,6 +57,7 @@ def draw_frame(
     clip_id: str | None = None,
     draw_confidence: bool = True,
     draw_behaviour: bool = True,
+    draw_track_id: bool = True,
 ) -> np.ndarray[Any, Any]:
     """Return a copy of *frame* with boxes and labels drawn on it.
 
@@ -69,6 +70,8 @@ def draw_frame(
         clip_id: Clip identifier, shown in the corner.
         draw_confidence: Show each prediction's score.
         draw_behaviour: Show each annotation's behaviour label.
+        draw_track_id: Show the tracker's identity on predictions that carry
+            one. Tracker ids are only meaningful within a single clip.
 
     Returns:
         A new annotated frame.
@@ -93,6 +96,10 @@ def draw_frame(
         bottom_right = (int(box.x_max), int(box.y_max))
         cv2.rectangle(canvas, top_left, bottom_right, PREDICTION_COLOUR, 2)
         text = detection.category_name
+        # `track_id` only exists on TrackedDetection; a plain Detection has none.
+        track_id = getattr(detection, "track_id", None)
+        if draw_track_id and track_id is not None:
+            text = f"#{track_id} {text}"
         if draw_confidence:
             text = f"{text} {detection.confidence:.2f}"
         _label(canvas, text, top_left, PREDICTION_COLOUR)
