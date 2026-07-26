@@ -372,6 +372,11 @@ describe these clips, not PanAf500.
 
 ## 11. Figures
 
+> These three frames are annotated stills from PanAf500 video, committed so the write-up renders for
+> anyone who clones the repository. They are derived works shown for research illustration; the
+> underlying dataset is **not** redistributed here and remains under the Bristol deposit's
+> non-commercial terms. See [licensing](../docs/obsidian/05%20Technical/licensing.md).
+
 ![Two gorillas detected at 0.92 and 0.74 with tracker ids #2 and #6, matching ground truth, while
 the distant gorilla at top-left (small amber box) is missed. Green = prediction, amber = dataset
 ground truth. Clip FgJpFLxSmH frame 100.](figures/FgJpFLxSmH_frame100_tracked.png)
