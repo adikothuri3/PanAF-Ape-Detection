@@ -1,0 +1,52 @@
+# Baseline arm of the variant comparison: MDV6-yolov9-c at confidence 0.05.
+#
+# The counterpart to configs/colab-variant-yolov10e.yaml. Both arms are
+# detector-only at 0.05 so they can be compared at *any* threshold from saved
+# detections, and so neither is confounded by tracking's `drop_short_tracks`.
+#
+# This is the run that produced the sweep in the 2026-07-26 findings (§8):
+# F1 0.594 at 0.05 against 0.536 at 0.20, with the recovered detections landing
+# almost entirely on the low-contrast clips.
+#
+# It is shipped rather than improvised so the comparison reproduces from a clean
+# clone -- the acceptance test for this repository is that someone else can.
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: variant-yolov9c-conf005
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  artifacts_dir: artifacts/sweep-conf005
+
+data:
+  manifest_path: data/sample_manifest.csv
+  max_clips: 10
+  frame_stride: 1
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  variant: MDV6-yolov9-c
+  confidence_threshold: 0.05
+  # Colab T4. Inference never runs on CPU; this fails fast on a CPU runtime.
+  device: cuda
+
+tracking:
+  enabled: false
+  backend: none
+  minimum_track_length: 5
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+
+logging:
+  level: INFO
+  save_run_metadata: true

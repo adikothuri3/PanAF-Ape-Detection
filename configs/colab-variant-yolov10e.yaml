@@ -1,0 +1,79 @@
+# Variant comparison: MDV6-yolov10-e against the MDV6-yolov9-c baseline.
+#
+# The question this is built to answer, from the 2026-07-26 findings:
+#
+#   Detection recall is 0.386 at confidence 0.20, and the misses concentrate in
+#   low-contrast footage where the model still fires but scores 0.05-0.15. Does a
+#   larger, higher-resolution variant score those same subjects *higher*, or is
+#   the score depression a property of the footage that no pretrained variant
+#   fixes?
+#
+# Why that matters more than the recall number alone: `sv.ByteTrack` discards
+# detections at or below 0.1 and needs `activation + 0.1` to start a track, so
+# recall recovered below 0.15 never reaches the tracker. A variant that lifts
+# those scores above the floor raises track coverage; one that merely finds more
+# low-confidence boxes does not.
+#
+# Read the result two ways:
+#   better -> adopt it; the tracker floor stops mattering
+#   same   -> capacity is not the gap, which is the strongest evidence yet that
+#             fine-tuning (or different footage conditioning) is the real answer
+#
+# Deliberate differences from configs/colab.yaml:
+#
+#   * variant: MDV6-yolov10-e -- the thing under test. Larger `-e` weights.
+#   * confidence_threshold: 0.05 -- matches the baseline sweep run, so the two
+#     are comparable at *every* threshold rather than only at 0.20. Detections
+#     below the threshold are never written, so a run at 0.20 could not be swept
+#     downward later. Costs roughly 4x in postprocessing time; worth it once.
+#   * tracking: disabled -- this measures the *detector*. Tracking's
+#     `drop_short_tracks` runs before evaluation and would confound the
+#     comparison. Run `panaf-phase1 track` over the saved detections afterwards
+#     to get track quality without paying for inference twice.
+#   * artifacts_dir: artifacts/variant-yolov10e -- keeps the baseline's outputs
+#     in artifacts/ intact for side-by-side comparison. Still inside artifacts/,
+#     so it stays git-ignored.
+#
+# Licensing: the YOLOv10-derived weights do not carry the same terms as every
+# other variant. Verify before any deployment or commercial use --
+# docs/obsidian/05 Technical/licensing.md.
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: variant-yolov10e
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  artifacts_dir: artifacts/variant-yolov10e
+
+data:
+  manifest_path: data/sample_manifest.csv
+  max_clips: 10
+  frame_stride: 1
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  variant: MDV6-yolov10-e
+  confidence_threshold: 0.05
+  # Colab T4. Inference never runs on CPU; this fails fast on a CPU runtime.
+  device: cuda
+
+tracking:
+  enabled: false
+  backend: none
+  minimum_track_length: 5
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+
+logging:
+  level: INFO
+  save_run_metadata: true

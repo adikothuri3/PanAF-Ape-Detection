@@ -130,6 +130,10 @@ accelerator. **Nothing measured under it is reportable**, least of all a timing.
 `model.device: auto` prefers CUDA, then MPS, and raises rather than silently choosing CPU. Never
 change a config to `cpu` to make a run "work".
 
+Configs for Colab runs: `configs/colab.yaml` (baseline), `configs/colab-sweep-conf005.yaml` and
+`configs/colab-variant-yolov10e.yaml` (the two arms of the variant comparison, both detector-only at
+confidence 0.05 so they compare at every threshold).
+
 ### Do not fine-tune
 
 Phase 1 is **pretrained inference only**. No training loops, optimisers, or `requires_grad`

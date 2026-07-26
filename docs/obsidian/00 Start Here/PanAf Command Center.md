@@ -59,8 +59,17 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
 
 ## Current Active Task
 
-**None active.** Phase 1 steps 1-6 closed on 2026-07-26 with the full 10-clip run, tracking, and
-the findings write-up.
+**Variant comparison: `MDV6-yolov10-e` against the `MDV6-yolov9-c` baseline.** Config-only, on
+Colab: `configs/colab-variant-yolov10e.yaml` against `configs/colab-sweep-conf005.yaml`, both
+detector-only at confidence 0.05 so they compare at every threshold. Section 10 of
+[the notebook](../../../notebooks/phase1_colab.ipynb) runs both arms and prints the comparison.
+
+**The number that decides it** is not recall but the score distribution: what fraction of detections
+clears ByteTrack's hardcoded 0.1 floor. A variant that only finds fainter boxes changes nothing
+downstream.
+
+Phase 1 steps 1-6 closed on 2026-07-26 with the full 10-clip run, tracking, and the findings
+write-up. This is a Beyond-Phase-1 cheap experiment, not a seventh step.
 
 ## Next Recommended Task
 
@@ -75,7 +84,8 @@ the findings write-up.
    coverage to 0.20 with more ID switches. So the decision is really *which output is the product* —
    and if it is tracks, the question is whether ByteTrack is the right tracker for footage whose hard
    cases score 0.05-0.10.
-3. **Variant comparison.** `MDV6-yolov10-e` is larger and higher-resolution. Config-only change.
+3. **Variant comparison — now the active task, see above.** `MDV6-yolov10-e` is larger and
+   higher-resolution. Config-only change, ~40 min on a T4.
 
 Contrast preprocessing has dropped down the list: §8 shows the model already responds to those
 subjects, just weakly, so equalisation would be lifting scores rather than creating detections.
