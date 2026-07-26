@@ -14,19 +14,25 @@ updated: 2026-07-24
 
 ## Current Status
 
-🟡 **Infrastructure audited and proven. No detection has been run on real footage.**
+🟢 **Detection pipeline working and measured on real PanAf500 footage.**
 
 The environment, typed config, runtime layer, schemas, setup CLI, tests, CI and documentation are in
 place and green (**190 tests, 18 verification checks**, CI passing on `main`). The repo is published
 at [adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
 
-The stack is now **proven, not assumed**: `make smoke-detect` loads real `MDV6-yolov9-c` weights and
-runs inference end to end, and `make smoke-inference` checks imports, ByteTrack, NumPy 2.x interop
-and a video round-trip without downloading anything.
+10 PanAf500 clips downloaded (23.4 MB), **3 processed over 1080 frames**. Measured at confidence
+0.20 / IoU 0.50 on verified MPS:
 
-**No dataset has been downloaded and no clip annotated.** Steps 2–6 of [[Phase 1 Task Spec]] are all
-outstanding, and detection quality is entirely unmeasured — the only frames put through the model
-were synthetic noise.
+| | Precision | Recall | F1 | mean IoU |
+|---|---|---|---|---|
+| **Overall** | **0.854** | **0.411** | **0.555** | 0.831 |
+
+**Precise but insensitive** — it rarely invents an ape (7 false positives across 67 empty frames) but
+misses about three in five. Failure concentrates in arboreal postures (`hanging` 0.000,
+`climbing_up` 0.017), infrared night footage (one clip at recall 0.009) and small subjects (0.104).
+
+Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-25.md).
+**7 clips remain**, to be run on the Colab T4.
 
 ## Current Phase
 
@@ -37,22 +43,21 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
 
 ## Current Active Task
 
-**None active.** The scaffold task closed on 2026-07-24.
+**None active.** Phase 1b–1f closed on 2026-07-25 with the detection pipeline and first measurements.
 
 ## Next Recommended Task
 
-**Phase 1b — clip selection and frame extraction.**
+**Finish the sample, then sweep the threshold — before any fine-tuning.**
 
-1. Obtain PanAf500 access from the [Bristol deposit](https://data.bris.ac.uk/data/dataset/1h73erszj3ckn2qjwm4sqmr2wt)
-   under its own licence, and download **5–10 clips only**.
-2. Fill in `data/sample_manifest.csv` from the template, with SHA-256 checksums and a
-   `selected_reason` per clip. `provenance.file_sha256()` computes the digests; selection axes are
-   in [dataset docs](../05%20Technical/dataset.md).
-3. Implement `panaf_ape_detection.data.manifest` then `.video`, tested against **synthetic** video
-   so CI never needs the dataset.
+1. Run the remaining **7 clips** on a Colab T4 via [the notebook](../../../notebooks/phase1_colab.ipynb).
+2. **Confidence sweep.** Precision 0.854 against recall 0.411 says the operating point is mistuned
+   for this footage. `panaf-phase1 evaluate` recomputes from saved detections, so a sweep costs no
+   GPU time at all. Cheapest possible experiment; do it first.
+3. **Variant comparison.** `MDV6-yolov10-e` is larger and higher-resolution. Config-only change.
+4. Only then consider fine-tuning, and target the measured gaps — arboreal postures, infrared, small
+   subjects — rather than the average.
 
-Do manifest before frame extraction: it makes the checksum contract real before anything consumes
-the files.
+Tracking (ByteTrack) is still deferred; `ape_id` ground truth is waiting for it.
 
 ## Reading Progress
 

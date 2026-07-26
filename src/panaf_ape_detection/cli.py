@@ -9,9 +9,9 @@ Only honest, setup-oriented commands exist right now:
 ``show-paths``
     Print the resolved repository layout.
 
-The pipeline commands (``extract-frames``, ``detect``, ``track``, ``annotate``)
-are intentionally absent rather than stubbed, so that ``--help`` never advertises
-functionality that does not exist. See ``README.md`` for the planned workflow.
+``fetch-clips`` selects and downloads a PanAf500 sample; ``detect`` runs
+MegaDetector over it and writes annotated video; ``evaluate`` recomputes accuracy
+from saved detections. Tracking remains unimplemented and therefore unregistered.
 
 This module must import cleanly without the ``inference`` extra installed; every
 machine-learning import happens lazily inside :func:`_probe_optional_dependency`.
@@ -26,15 +26,19 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from panaf_ape_detection import __version__
-from panaf_ape_detection.config import ConfigError, load_config
+from panaf_ape_detection.config import Config, ConfigError, load_config
 from panaf_ape_detection.paths import RepositoryPaths, repository_root
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from panaf_ape_detection.inference.base import Detector
+    from panaf_ape_detection.pipeline.runner import ClipResult
 
 __all__ = ["app", "main"]
 
@@ -42,10 +46,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     name="panaf-phase1",
-    help=(
-        "Phase 1 tooling for pretrained MegaDetector V6 inference over PanAf500 clips. "
-        "Setup commands only; the detection pipeline is not implemented yet."
-    ),
+    help=("Phase 1 tooling for pretrained MegaDetector V6 inference over PanAf500 clips."),
     no_args_is_help=True,
     add_completion=False,
 )
@@ -347,6 +348,221 @@ def show_paths(
     for name, path in paths.artifact_subdirectories().items():
         artifacts.add_row(name, str(path), _OK if path.is_dir() else _NO)
     console.print(artifacts)
+
+
+_CONFIG_OPTION = typer.Option(
+    "--config", "-c", help="YAML config, relative to the repository root."
+)
+
+
+def _load_or_exit(config: Path) -> Config:
+    """Load a config, exiting with an actionable message on failure."""
+    try:
+        return load_config(config)
+    except ConfigError as exc:
+        _error_console.print(f"[red]Configuration invalid[/red]\n{exc}")
+        raise typer.Exit(code=1) from exc
+
+
+def _build_detector(config: Config) -> Detector:
+    """Construct the configured detector, or exit with guidance.
+
+    Imported here rather than at module scope so the rest of the CLI keeps
+    working without the ``inference`` extra.
+    """
+    try:
+        from panaf_ape_detection.inference.megadetector import MegaDetectorV6Runner
+    except ImportError as exc:
+        _error_console.print(
+            "[red]The inference extra is not installed.[/red]\n"
+            "Run [bold]uv sync --extra inference[/bold] first."
+        )
+        raise typer.Exit(code=1) from exc
+
+    with console.status(f"Loading {config.model.variant} (first run downloads weights)..."):
+        try:
+            return MegaDetectorV6Runner(config.model.variant, device=config.model.device)
+        except Exception as exc:
+            _error_console.print(f"[red]Could not load the detector:[/red] {exc}")
+            raise typer.Exit(code=1) from exc
+
+
+def _report(results: list[ClipResult]) -> None:
+    """Print the per-clip and overall accuracy tables."""
+    from panaf_ape_detection.pipeline.runner import summarise
+
+    table = Table(title="Per clip", show_header=True, header_style="bold")
+    for column in ("Clip", "Frames", "Kept", "P", "R", "F1", "mIoU", "FP on empty"):
+        table.add_column(column)
+    for result in results:
+        evaluation = result.evaluation
+        if evaluation is None:
+            table.add_row(result.clip_id, str(result.frames_processed), *(["-"] * 6))
+            continue
+        counts = evaluation.overall
+        table.add_row(
+            result.clip_id,
+            str(result.frames_processed),
+            str(result.detections_kept),
+            f"{counts.precision:.3f}",
+            f"{counts.recall:.3f}",
+            f"{counts.f1:.3f}",
+            f"{evaluation.mean_iou:.3f}",
+            str(evaluation.false_positives_on_empty_frames),
+        )
+    console.print(table)
+
+    summary = summarise(results)
+    overall = summary["overall"]
+    assert isinstance(overall, dict)
+    console.print(
+        f"\n[bold]Overall[/bold]  precision {overall['precision']} · "
+        f"recall {overall['recall']} · F1 {overall['f1']} · "
+        f"mean IoU {summary['mean_iou']}"
+    )
+    console.print(
+        "[dim]MegaDetector emits a generic 'animal' class, so a detection counts as correct when "
+        "it localises an annotated ape. No claim about species is made.[/dim]"
+    )
+
+
+@app.command("fetch-clips")
+def fetch_clips(
+    count: Annotated[int, typer.Option("--count", help="Clips to download (5-10).")] = 10,
+    pool: Annotated[int, typer.Option("--pool", help="Candidates to profile first.")] = 150,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Select only; download nothing.")
+    ] = False,
+) -> None:
+    """Select and download a purposive PanAf500 sample, writing the manifest.
+
+    Downloads dataset files under the deposit's non-commercial licence. Nothing
+    it writes may be committed.
+    """
+    import subprocess
+
+    script = repository_root() / "scripts" / "fetch_panaf500.py"
+    command = [sys.executable, str(script), "--count", str(count), "--pool", str(pool)]
+    if dry_run:
+        command.append("--dry-run")
+    raise typer.Exit(code=subprocess.run(command, check=False).returncode)
+
+
+@app.command()
+def detect(
+    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
+    clips: Annotated[int | None, typer.Option("--clips", help="Cap clips processed.")] = None,
+    frames: Annotated[int | None, typer.Option("--frames", help="Cap frames per clip.")] = None,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Re-run existing outputs.")
+    ] = False,
+) -> None:
+    """Run MegaDetector over the manifest's clips and write annotated video.
+
+    Produces per-frame detections, an annotated MP4 per clip, accuracy against
+    ground truth, and a run-metadata record.
+    """
+    from panaf_ape_detection.pipeline.runner import run_manifest
+    from panaf_ape_detection.runtime import set_seeds
+
+    loaded = _load_or_exit(config)
+    set_seeds(loaded.project.seed)
+    detector = _build_detector(loaded)
+
+    verified = getattr(detector, "verified_device", None)
+    console.print(
+        f"[green]{detector.name} {detector.variant}[/green] on "
+        f"[bold]{verified or detector.device.value}[/bold]"
+    )
+
+    try:
+        results = run_manifest(
+            loaded,
+            detector,
+            max_clips=clips,
+            overwrite=overwrite,
+            limit_frames=frames,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        _error_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    _report(results)
+    artifacts = loaded.repository_paths().artifacts_dir
+    console.print(f"\nAnnotated video: {artifacts / 'videos'}")
+    console.print(f"Detections:      {artifacts / 'detections'}")
+    console.print(f"Metrics:         {artifacts / 'metrics'}")
+
+
+@app.command()
+def evaluate(
+    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
+) -> None:
+    """Recompute accuracy from saved detections, without re-running inference.
+
+    Reads ``artifacts/detections/`` and compares against ground truth, so a
+    threshold can be reconsidered without spending GPU time again.
+    """
+    import json as _json
+
+    from panaf_ape_detection.data.annotations import load_ground_truth
+    from panaf_ape_detection.evaluation.detection import evaluate_clip
+    from panaf_ape_detection.pipeline.runner import load_manifest
+    from panaf_ape_detection.types import Detection as _Detection
+
+    loaded = _load_or_exit(config)
+    paths = loaded.repository_paths()
+    raw_root = paths.raw_data_dir / "panaf500"
+
+    try:
+        rows = load_manifest(loaded.data.manifest_path)
+    except FileNotFoundError as exc:
+        _error_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    table = Table(title="Accuracy from saved detections", show_header=True, header_style="bold")
+    for column in ("Clip", "P", "R", "F1", "mIoU"):
+        table.add_column(column)
+
+    found = 0
+    for row in rows:
+        stored = paths.artifacts_dir / "detections" / f"{row.clip_id}.json"
+        if not stored.is_file() or not row.annotation_filename:
+            continue
+        document = _json.loads(stored.read_text(encoding="utf-8"))
+        predictions = {
+            frame["frame_index"]: [_Detection(**d) for d in frame["detections"]]
+            for frame in document["frames"]
+        }
+        truth = load_ground_truth(
+            raw_root / "annotations" / row.annotation_filename,
+            frame_width=document["video"]["width"],
+            frame_height=document["video"]["height"],
+            clip_id=row.clip_id,
+        )
+        evaluation = evaluate_clip(
+            row.clip_id,
+            predictions,
+            truth,
+            confidence_threshold=document["model"]["confidence_threshold"],
+        )
+        counts = evaluation.overall
+        table.add_row(
+            row.clip_id,
+            f"{counts.precision:.3f}",
+            f"{counts.recall:.3f}",
+            f"{counts.f1:.3f}",
+            f"{evaluation.mean_iou:.3f}",
+        )
+        found += 1
+
+    if not found:
+        _error_console.print(
+            "[yellow]No saved detections found.[/yellow] "
+            "Run [bold]panaf-phase1 detect[/bold] first."
+        )
+        raise typer.Exit(code=1)
+    console.print(table)
 
 
 def main() -> None:

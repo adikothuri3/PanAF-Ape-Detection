@@ -49,15 +49,43 @@ Phase 1 step 5 displays these labels **beside** detections. They are **dataset g
 model predictions** — MegaDetector cannot predict behaviour (see [`model.md`](model.md)) — and any
 annotated clip must make that distinction visible to a viewer.
 
-> **The label list is verified. The annotation file format is not.** Those are two different claims
-> and this document must not blur them.
+### Annotation format — verified
+
+Read from real deposit files, not assumed. One JSON per clip, named after the video, under
+`PanAf500/annotations/{train,validation,test}/`:
+
+```json
+{"video": "035FQHMNRk",
+ "annotations": [{"frame_id": 1,
+                  "detections": [{"bbox": [144.0, 0.0, 491.0, 397.0],
+                                  "ape_id": 0,
+                                  "species": "chimpanzee",
+                                  "behaviour": "climbing_up"}]}]}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `frame_id` | **1-based** frame number (1..360 for a 360-frame clip) |
+| `bbox` | `[x1, y1, x2, y2]` in absolute pixels — the same `xyxy` convention as `BoundingBox` |
+| `ape_id` | Individual identity **within this video only**; ground truth for tracking |
+| `species` | `chimpanzee` or `gorilla` |
+| `behaviour` | One of the nine, in **underscore form** (`climbing_up`, `camera_interaction`) |
+
+The file carries **no frame dimensions**; they come from decoding the video, which is what makes the
+loaded records self-describing.
+
+> **Two traps, both silent if missed.**
 >
-> Still unverified, and not to be guessed: which file holds these labels, whether they are recorded
-> per frame or per track, the exact strings used on disk (`climbing up` vs `climbing_up` vs an
-> integer id), the coordinate convention of the boxes, and how simultaneous behaviours are
-> represented. Write those down here only after opening the real files or reading the deposit's own
-> documentation, and record which you used. Guessing a schema and then coding against the guess is
-> how a pipeline silently produces plausible, wrong output.
+> 1. `frame_id` is **1-based** while everything else here is 0-based. An unconverted join shifts
+>    every box by one frame — which reads as a mediocre detector, not a bug.
+> 2. Behaviour labels use **underscores on disk** but prose in the onboarding document. A lookup
+>    against `"climbing up"` matches nothing, silently.
+>
+> Both are handled in exactly one place — `panaf_ape_detection.data.annotations` — and covered by
+> regression tests. Do not re-implement either conversion elsewhere.
+
+Frames with **no** detections are common and meaningful: they are what make false-positive rate
+measurable. Roughly 44% of the clips profiled had at least one.
 
 ## Annotations relevant to this project
 

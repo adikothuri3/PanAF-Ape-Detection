@@ -39,8 +39,19 @@ def registered_command_names() -> set[str]:
 
 
 def test_only_implemented_commands_are_registered():
-    """Unimplemented pipeline stages must be absent, not stubbed."""
-    assert registered_command_names() == {"doctor", "validate-config", "show-paths"}
+    """A command may only be registered once it is implemented and tested.
+
+    Tracking and standalone frame extraction are still unimplemented, so they
+    must stay absent rather than appear as stubs.
+    """
+    assert registered_command_names() == {
+        "doctor",
+        "validate-config",
+        "show-paths",
+        "fetch-clips",
+        "detect",
+        "evaluate",
+    }
 
 
 def test_help_lists_the_implemented_commands():

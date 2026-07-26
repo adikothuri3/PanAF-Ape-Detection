@@ -58,10 +58,27 @@ Acquisition is **manual and deliberate**:
 4. Place the files under `data/raw/` (see layout below).
 5. Compute checksums and record your selection in a manifest (see below).
 
-There is **no download script in this repository, on purpose.** An unverified scraper against a
-research deposit is a good way to violate terms of use, hammer someone's server, or silently fetch
-the wrong thing. A download utility can be added later once the exact endpoints and terms have been
-confirmed — with a rate limit and a resume, not a `for` loop over `wget`.
+### The fetcher
+
+The endpoint and terms are now verified, so acquisition is scripted:
+
+```bash
+panaf-phase1 fetch-clips --count 10          # select, download, write the manifest
+panaf-phase1 fetch-clips --dry-run           # show the selection without downloading
+```
+
+It downloads **only the clips it selects** — roughly 1-6 MB each — never the 42.2 GiB archive. The
+deposit exposes a browsable tree at
+`https://data.bris.ac.uk/datasets/1h73erszj3ckn2qjwm4sqmr2wt/PanAf500/`, which is what makes a
+targeted sample possible.
+
+**Selection is purposive, not random.** It profiles candidate *annotations* first (no video), then
+greedily picks clips covering the failure axes below: all nine behaviours, both species, crowded
+frames, small and large subjects, and frames containing no ape. Each pick's reasoning is written
+into the manifest's `selected_reason`, and checksums are computed as files land.
+
+It refuses to overwrite anything already in `data/raw/` — raw data is immutable, and a silent
+re-download would invalidate checksums already recorded against it.
 
 ### Licensing constraints
 

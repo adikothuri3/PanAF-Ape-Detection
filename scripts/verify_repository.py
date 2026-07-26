@@ -72,6 +72,19 @@ REQUIRED_FILES: tuple[str, ...] = (
     "notebooks/phase1_colab.ipynb",
     "reports/phase1_writeup_template.md",
     "scripts/check_environment.py",
+    "scripts/fetch_panaf500.py",
+    "src/panaf_ape_detection/data/annotations.py",
+    "src/panaf_ape_detection/data/video.py",
+    "src/panaf_ape_detection/evaluation/detection.py",
+    "src/panaf_ape_detection/inference/base.py",
+    "src/panaf_ape_detection/inference/megadetector.py",
+    "src/panaf_ape_detection/inference/filtering.py",
+    "src/panaf_ape_detection/visualization/overlays.py",
+    "src/panaf_ape_detection/visualization/video.py",
+    "src/panaf_ape_detection/pipeline/runner.py",
+    "tests/test_annotations.py",
+    "tests/test_evaluation.py",
+    "tests/test_video_and_overlays.py",
     "scripts/smoke_detect.py",
     "scripts/smoke_inference.py",
     "scripts/verify_repository.py",
@@ -165,8 +178,11 @@ LARGE_FILE_ALLOWLIST: frozenset[str] = frozenset({"uv.lock", "requirements-colab
 
 MAX_TRACKED_FILE_BYTES = 1_000_000
 
-# Commands the CLI is allowed to expose while the pipeline is unimplemented.
-EXPECTED_CLI_COMMANDS: frozenset[str] = frozenset({"doctor", "validate-config", "show-paths"})
+# Commands the CLI is allowed to expose. A command may only be registered in the
+# same change that implements and tests it -- this list is the gate.
+EXPECTED_CLI_COMMANDS: frozenset[str] = frozenset(
+    {"doctor", "validate-config", "show-paths", "fetch-clips", "detect", "evaluate"}
+)
 
 _failures: list[str] = []
 

@@ -10,15 +10,18 @@ with — and to record that honestly enough that someone else can reproduce it.
 
 ## Status
 
-**Repository scaffold / Phase 1 setup.**
+**Phase 1 detection pipeline implemented and measured.**
 
-What exists today: a typed configuration system, a setup-oriented CLI, the repository layout, a
-locked environment, tests, CI, and the documentation and logging structure the experiment will be
-recorded in.
+What works today: PanAf500 clip selection and download, frame decoding, pretrained MegaDetector V6
+inference, confidence filtering, annotated video export, and **accuracy measured against the
+dataset's ground-truth boxes**.
 
-What does **not** exist yet: frame extraction, MegaDetector inference, tracking, behaviour-label
-overlay, and video export. No detections have been produced by this repository. No results,
-metrics, or figures in this repository are real, because none have been generated.
+Measured on **3 clips / 1080 frames** at confidence 0.2 and IoU 0.5, on Apple MPS:
+**precision 0.854, recall 0.411, F1 0.555, mean IoU 0.831.** High precision, poor recall — see
+[the findings write-up](reports/) for the breakdown by behaviour and subject size.
+
+What does **not** exist yet: tracking (ByteTrack), and the full 10-clip run. No fine-tuning has been
+done; this phase exists to produce the evidence for that decision.
 
 Current task, reading progress and the deliverable checklist are tracked in
 [`docs/obsidian/00 Start Here/PanAf Command Center.md`](docs/obsidian/00%20Start%20Here/PanAf%20Command%20Center.md).
@@ -54,8 +57,8 @@ Sub-questions that the phase should answer qualitatively:
 - Species classification. MegaDetector predicts `animal` / `person` / `vehicle`; it does not
   distinguish chimpanzees from gorillas.
 - Behaviour recognition. Behaviour labels are read from the dataset, never predicted.
-- Quantitative detection benchmarks (mAP against ground truth). Phase 1 is a qualitative baseline;
-  a scored evaluation is Phase 2 work.
+- mAP (a threshold sweep). Accuracy **is** measured, but at one stated confidence and IoU
+  threshold — the operating point actually run — rather than averaged across thresholds.
 - Redistributing dataset files or model weights through this repository.
 - Real-time or on-robot deployment.
 
@@ -73,24 +76,23 @@ flowchart TD
 
     classDef done fill:#1b4332,stroke:#2d6a4f,color:#ffffff;
     classDef todo fill:#3d3d00,stroke:#7a7a00,color:#ffffff,stroke-dasharray: 5 3;
-    class A todo;
-    class B,C,D,E,F,G,H todo;
+    class A,B,C,D,F,G,H done;
+    class E todo;
 ```
 
-**Every stage above is unimplemented.** The diagram describes the intended design, not current
-behaviour. The only things that work today are configuration loading and the setup CLI, which sit
-underneath every stage rather than inside one.
+Every stage is implemented **except tracking**, which is deliberately deferred until the detection
+baseline is understood.
 
-| Stage | Status | Where it will live |
+| Stage | Status | Where it lives |
 | --- | --- | --- |
-| Clip selection + manifest | Documented, manual | `data/README.md`, `data/sample_manifest.example.csv` |
-| Frame extraction | Not implemented | `src/panaf_ape_detection/data/` |
-| MegaDetector V6 inference | Not implemented | `src/panaf_ape_detection/inference/` |
-| Confidence filtering | Not implemented | `src/panaf_ape_detection/inference/` |
-| Tracking | Not implemented, backend undecided | `src/panaf_ape_detection/tracking/` |
-| Behaviour-label overlay | Not implemented | `src/panaf_ape_detection/visualization/` |
-| Video export | Not implemented | `src/panaf_ape_detection/visualization/` |
-| Qualitative evaluation | Not implemented | `src/panaf_ape_detection/evaluation/` |
+| Clip selection + manifest | **Done** | `scripts/fetch_panaf500.py`, `manifest.py` |
+| Frame decoding | **Done** | `data/video.py` |
+| MegaDetector V6 inference | **Done** | `inference/megadetector.py` |
+| Confidence filtering | **Done** | `inference/filtering.py` |
+| Tracking | Not implemented, backend undecided | `tracking/` (planned) |
+| Behaviour-label overlay | **Done** | `visualization/overlays.py` |
+| Video export | **Done** | `visualization/video.py` |
+| Accuracy vs ground truth | **Done** | `evaluation/detection.py` |
 
 See [`docs/obsidian/05 Technical/architecture.md`](docs/obsidian/05%20Technical/architecture.md) for the intended module boundaries.
 

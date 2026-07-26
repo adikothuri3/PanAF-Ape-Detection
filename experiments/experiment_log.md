@@ -423,3 +423,131 @@ have, because the unsound path required `.append()` on a downcast reference.
 Phase 1b. Obtain PanAf500 access, select 5–10 clips against the axes in `docs/obsidian/05 Technical/dataset.md`, fill
 `data/sample_manifest.csv` (schema now in `manifest.py`, digests from `provenance.file_sha256`),
 then implement `data/manifest.py` loading before `data/video.py`, tested against synthetic video.
+
+---
+
+## 2026-07-25 — Phase 1: PanAf500 acquired, MegaDetector run, accuracy measured
+
+**Objective**
+Obtain PanAf500 access, run pretrained MegaDetector V6 over real clips, produce annotated video, and
+measure accuracy against ground truth well enough to inform a fine-tuning decision.
+
+**Hypothesis / question**
+From `05 Technical/model.md`, written before any run: night/infrared, occlusion, and small distant
+subjects were expected to degrade detection. Which failure mode actually dominates, and is it
+uniform or concentrated?
+
+**Environment**
+- Machine / OS: macOS 15.5, Apple M1, arm64
+- Device: **mps:0, verified** by inspecting tensor placement (not by trusting the library)
+- Python: 3.11.15
+- Working tree clean? No — dirty during the run; recorded in run metadata
+
+**Data / clip IDs**
+10 clips downloaded from the Bristol deposit (23.4 MB); **3 processed** this session:
+`FgJpFLxSmH` (gorilla, daylight, camera interaction/running, some small subjects),
+`RHH9DDfWZa` (chimpanzee, **infrared night**, hanging/climbing_up, 35 empty frames),
+`1xDXmshd5P` (chimpanzee, climbing_down/climbing_up/sitting_on_back).
+Checksums verified before the run; manifest at `data/sample_manifest.csv`.
+
+**Model and variant**
+- Framework: PyTorch-Wildlife 1.3.0
+- Model: MegaDetectorV6
+- Variant: `MDV6-yolov9-c`
+- Confidence threshold: 0.20 · IoU threshold for matching: 0.50
+
+**Configuration**
+`configs/base.yaml`, frame_stride 1 (every frame).
+
+**Commands run**
+```bash
+uv run python scripts/fetch_panaf500.py --count 10 --pool 150
+uv run --extra inference panaf-phase1 detect -c configs/base.yaml --clips 1 --frames 5 --overwrite
+uv run --extra inference panaf-phase1 detect -c configs/base.yaml --clips 3 --overwrite
+```
+
+**Observations**
+
+The deposit turned out to expose a **browsable file tree**, so clips can be fetched individually
+(~1–6 MB each) instead of the 42.2 GiB archive. That is what made a targeted 10-clip sample
+practical, and it retires the "no download script" caveat that had stood since the scaffold.
+
+The annotation schema is now **verified from real files**, closing the longest-standing unknown in
+this project. Two traps were found and handled in `data/annotations.py`:
+`frame_id` is **1-based** (everything else here is 0-based), and behaviour labels use **underscores**
+on disk (`climbing_up`) while the onboarding PDF writes them as prose.
+
+The device bug fired exactly as documented, on the first real run:
+`PyTorch-Wildlife ignored device='mps' (weights on 'cpu'); forcing it` → `weights forced onto mps:0`.
+
+**Quantitative results**
+
+3 clips, 1080 frames, 1660 annotated boxes, at confidence 0.20 / IoU 0.50:
+
+| | Precision | Recall | F1 | mean IoU |
+|---|---|---|---|---|
+| **Overall** | **0.854** | **0.411** | **0.555** | 0.831 |
+| FgJpFLxSmH | 0.876 | 0.673 | 0.762 | 0.900 |
+| 1xDXmshd5P | 0.793 | 0.299 | 0.435 | 0.777 |
+| RHH9DDfWZa | 1.000 | 0.009 | 0.018 | 0.816 |
+
+TP 682 / FP 117 / FN 978. Only **7** false positives across **67** frames containing no ape.
+
+Recall by behaviour: `hanging` 0.000 (0/213) · `climbing_up` 0.017 · `sitting_on_back` 0.110 ·
+`climbing_down` 0.182 · `walking` 0.504 · `standing` 0.582 · `running` 0.889 ·
+`camera_interaction` 1.000.
+
+Recall by subject size: small 0.104 · medium 0.629 · large 0.395.
+
+Throughput: ~210 ms inference per frame on MPS, ~2.2 min per 360-frame clip.
+
+**Qualitative results**
+
+Inspected frames directly rather than trusting the numbers alone. `FgJpFLxSmH` frame 100 shows two
+gorillas detected at 0.92 and 0.74 matching ground truth, with a **distant third gorilla missed** —
+the small-subject failure, visible. `RHH9DDfWZa` frame 0 is a **monochrome infrared night frame**: a
+dark chimpanzee hanging against dark bark, ground truth present, no detection. That inspection is
+what confirmed the 0.009 recall was real difficulty rather than a pipeline bug.
+
+Saved to `reports/figures/FgJpFLxSmH_frame100.png`.
+
+**Failures and dead ends**
+
+- **My evaluator was wrong on the first run.** A 5-frame smoke run reported recall 0.013 with
+  precision 1.000. Cause: it compared the 5 processed frames against all 360 annotated frames,
+  counting 355 never-processed frames as misses — so "recall" was really the fraction of frames
+  processed. Fixed to intersect processed frames with annotated ones; regression test added. Had
+  this gone unnoticed, every strided or capped run would have under-reported recall.
+- The clip selector estimates frame size from the largest box extent (annotations carry no
+  dimensions), so its "large subject" label for `RHH9DDfWZa` (57.8%) was wrong — true relative area
+  is 13.9% against the real 720×404. Selection was still sound; the reported figure was not. The
+  by-size table in the write-up flags the resulting confound.
+- The overlay initially risked reading as though the model produced behaviour labels. Resolved by
+  colouring predictions and ground truth differently and burning a legend into every frame.
+
+**Exact errors**
+```text
+# The upstream device bug, caught and corrected at runtime:
+WARNING panaf_ape_detection.inference.megadetector:
+  PyTorch-Wildlife ignored device='mps' (weights on 'cpu'); forcing it
+INFO    panaf_ape_detection.inference.megadetector: weights forced onto mps:0
+```
+
+**Interpretation**
+
+MegaDetector V6 is **precise but insensitive** here: it rarely invents an ape, and misses about three
+in five. Crucially the failure is **not uniform** — it concentrates in arboreal postures, infrared
+night footage, and small distant subjects. That shape matters more than the headline F1, because it
+says the gap is domain-specific rather than general weakness.
+
+The predictions in `model.md` held up: night/infrared, occlusion and small subjects were all
+confirmed as failure modes. What was not predicted is how *absolute* the arboreal failure is —
+0 of 213 `hanging` instances is not degradation, it is blindness.
+
+Before any fine-tuning, the cheap experiments come first: a confidence-threshold sweep (free —
+`panaf-phase1 evaluate` recomputes from saved detections) and a variant comparison (config-only).
+3 purposively-hard clips cannot support a claim about PanAf500 as a whole.
+
+**Next action**
+Run the remaining 7 clips on the Colab T4 using `notebooks/phase1_colab.ipynb`, then a threshold
+sweep over the saved detections before deciding anything about fine-tuning.
