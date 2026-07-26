@@ -31,8 +31,10 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import statistics
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections import Counter
@@ -54,6 +56,8 @@ HARD_BEHAVIOURS = frozenset(
     {"climbing_up", "climbing_down", "hanging", "camera_interaction", "sitting_on_back", "running"}
 )
 TIMEOUT = 60
+RETRIES = 4
+BACKOFF_SECONDS = 2.0
 
 
 @dataclass
@@ -110,26 +114,73 @@ class ClipProfile:
         return "; ".join(parts)
 
 
-def fetch(url: str) -> bytes:
-    """GET *url*, raising a readable error on failure."""
+def fetch(url: str, *, retries: int = RETRIES) -> bytes:
+    """GET *url*, retrying transient failures.
+
+    The deposit is a public research server reached over the open internet, and
+    a single dropped connection should not end a ten-minute run. Retries cover
+    timeouts, resets and 5xx responses; a 404 is not retried, because it will
+    never succeed.
+
+    Args:
+        url: The address to fetch.
+        retries: Attempts before giving up.
+
+    Returns:
+        The response body.
+
+    Raises:
+        RuntimeError: With an actionable message, after the last attempt.
+    """
     request = urllib.request.Request(url, headers={"User-Agent": "panaf-ape-detection/0.1"})
-    try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            return bytes(response.read())
-    except urllib.error.HTTPError as exc:
-        msg = f"HTTP {exc.code} for {url}"
-        raise RuntimeError(msg) from exc
-    except urllib.error.URLError as exc:
-        msg = f"could not reach {url}: {exc.reason}"
-        raise RuntimeError(msg) from exc
+    last: Exception | None = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+                return bytes(response.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500:
+                msg = (
+                    f"HTTP {exc.code} for {url}\n"
+                    "The deposit layout may have changed, or that clip may not exist in this split."
+                )
+                raise RuntimeError(msg) from exc
+            last = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc
+
+        if attempt < retries:
+            delay = BACKOFF_SECONDS * attempt
+            print(f"    retry {attempt}/{retries - 1} in {delay:.0f}s ({last}) ...", flush=True)
+            time.sleep(delay)
+
+    msg = (
+        f"could not fetch {url} after {retries} attempts: {last}\n"
+        "Check network access to data.bris.ac.uk. On Colab this is usually transient -- "
+        "re-run the cell. If it persists, the deposit may be down; try the URL in a browser."
+    )
+    raise RuntimeError(msg)
 
 
 def list_annotations(split: str) -> list[str]:
-    """Return the clip ids that have an annotation file in *split*."""
-    listing = fetch(f"{BASE_URL}/annotations/{split}/").decode("utf-8", "replace")
-    import re
+    """Return the clip ids that have an annotation file in *split*.
 
-    return sorted({m.group(1) for m in re.finditer(r'href="([^"]+)\.json"', listing)})
+    Raises:
+        RuntimeError: If the listing cannot be fetched, or parses to nothing --
+            which would mean the deposit's page format has changed and the
+            scrape needs updating, rather than that the split is empty.
+    """
+    url = f"{BASE_URL}/annotations/{split}/"
+    listing = fetch(url).decode("utf-8", "replace")
+    found = sorted({m.group(1) for m in re.finditer(r'href="([^"]+)\.json"', listing)})
+    if not found:
+        msg = (
+            f"no annotation files found at {url}. The deposit's directory listing format has "
+            "probably changed, so the link scrape in list_annotations() needs updating."
+        )
+        raise RuntimeError(msg)
+    return found
 
 
 def profile_clip(split: str, clip_id: str, cache: Path) -> ClipProfile | None:
@@ -273,7 +324,8 @@ def main(argv: list[str] | None = None) -> int:
     cache.mkdir(parents=True, exist_ok=True)
     print(f"profiling {len(pool)} candidates (annotations only, no video)...")
 
-    with ThreadPoolExecutor(max_workers=12) as pool_executor:
+    # Modest concurrency: this is a public research server, not a CDN.
+    with ThreadPoolExecutor(max_workers=6) as pool_executor:
         profiles = list(pool_executor.map(lambda item: profile_clip(item[0], item[1], cache), pool))
     usable = [p for p in profiles if p is not None]
     print(f"  profiled {len(usable)}")
