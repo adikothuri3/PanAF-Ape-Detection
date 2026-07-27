@@ -26,6 +26,7 @@ from panaf_ape_detection.reporting import (
     load_detection_metrics,
     load_track_metrics,
     pooled_counts,
+    pooled_track_metrics,
     recall_by_behaviour,
     recall_by_size,
     score_bands,
@@ -62,14 +63,39 @@ def track_metrics(clip_id: str) -> dict[str, Any]:
         "clip_id": clip_id,
         "iou_threshold": 0.5,
         "frames_evaluated": 360,
-        "annotated_individuals": 3,
+        "annotated_individuals": 2,
         "predicted_tracks": 4,
         "total_id_switches": 2,
-        "mean_fragmentation": 1.33,
+        "mean_fragmentation": 2.0,
         "mean_coverage": 0.5,
+        "mean_identity_coverage": 0.375,
+        "mean_track_purity": 0.9,
+        "id_merges": 1,
+        "mean_jitter": 0.02,
         "mostly_tracked": 1,
         "mostly_lost": 1,
-        "individuals": [],
+        # 100 annotated frames each; ape 0 fully covered by one track, ape 1
+        # covered half the time and split so its best track holds a quarter.
+        "individuals": [
+            {
+                "ape_id": 0,
+                "annotated_frames": 100,
+                "covered_frames": 100,
+                "coverage": 1.0,
+                "identity_coverage": 1.0,
+                "id_switches": 0,
+                "fragmentation": 1,
+            },
+            {
+                "ape_id": 1,
+                "annotated_frames": 100,
+                "covered_frames": 50,
+                "coverage": 0.5,
+                "identity_coverage": 0.25,
+                "id_switches": 1,
+                "fragmentation": 2,
+            },
+        ],
     }
 
 
@@ -336,3 +362,94 @@ def test_records_written_before_the_field_existed_report_empty(tmp_path: Path):
     write(root / "metrics" / "clip-a.json", detection_metrics("clip-a"))
 
     assert variants_in(load_detection_metrics(root)) == {""}
+
+
+# --------------------------------------------------------------------------- #
+# pooled_track_metrics
+# --------------------------------------------------------------------------- #
+
+
+def test_pooled_track_metrics_sum_across_clips(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    for clip in ("clip-a", "clip-b"):
+        write(root / "metrics" / TRACK_METRICS_SUBDIR / f"{clip}.json", track_metrics(clip))
+
+    pooled = pooled_track_metrics(load_track_metrics(root))
+
+    assert pooled.clips == 2
+    assert pooled.individuals == 4
+    assert pooled.predicted_tracks == 8
+    assert pooled.id_switches == 4
+    assert pooled.id_merges == 2
+    # 2 clips x (100 + 50) covered of (100 + 100) annotated.
+    assert pooled.coverage == pytest.approx(0.75)
+    # 2 clips x (100 + 25) dominant of 200 annotated.
+    assert pooled.identity_coverage == pytest.approx(0.625)
+    assert pooled.fragmentation == pytest.approx(2.0)
+    assert pooled.track_purity == pytest.approx(0.9)
+    assert pooled.jitter == pytest.approx(0.02)
+
+
+def test_pooled_track_coverage_weights_by_frames_not_by_clip(tmp_path: Path):
+    """A 400-frame ape and a 100-frame ape must not carry equal weight."""
+    root = tmp_path / "artifacts"
+    write(
+        root / "metrics" / TRACK_METRICS_SUBDIR / "clip-a.json",
+        {
+            **track_metrics("clip-a"),
+            "individuals": [
+                {
+                    "ape_id": 0,
+                    "annotated_frames": 400,
+                    "covered_frames": 400,
+                    "identity_coverage": 1.0,
+                },
+                {
+                    "ape_id": 1,
+                    "annotated_frames": 100,
+                    "covered_frames": 0,
+                    "identity_coverage": 0.0,
+                },
+            ],
+        },
+    )
+
+    pooled = pooled_track_metrics(load_track_metrics(root))
+
+    # 400 of 500, not the 0.5 a per-ape mean would give.
+    assert pooled.coverage == pytest.approx(0.8)
+    assert pooled.identity_coverage == pytest.approx(0.8)
+
+
+def test_pooled_track_metrics_of_nothing_is_empty():
+    pooled = pooled_track_metrics([])
+
+    assert pooled.clips == 0
+    assert pooled.coverage == 0.0
+    assert pooled.identity_coverage == 0.0
+    assert pooled.fragmentation == 0.0
+    # No tracks measured is not the same as impure tracks.
+    assert pooled.track_purity == 1.0
+
+
+def test_records_predating_the_identity_fields_do_not_claim_perfect_identity(tmp_path: Path):
+    """An old file must contribute no identity coverage rather than all of it.
+
+    Falling back to `covered_frames` would credit a run with identity it was
+    never measured for, and make an old baseline look better than a new one.
+    """
+    root = tmp_path / "artifacts"
+    legacy = {
+        "clip_id": "clip-a",
+        "predicted_tracks": 4,
+        "total_id_switches": 2,
+        "individuals": [{"ape_id": 0, "annotated_frames": 100, "covered_frames": 90}],
+    }
+    write(root / "metrics" / TRACK_METRICS_SUBDIR / "clip-a.json", legacy)
+
+    pooled = pooled_track_metrics(load_track_metrics(root))
+
+    assert pooled.coverage == pytest.approx(0.9)
+    assert pooled.identity_coverage == 0.0
+    assert pooled.purity_count == 0
+    assert pooled.track_purity == 1.0

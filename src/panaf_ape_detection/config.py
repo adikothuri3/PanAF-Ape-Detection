@@ -181,15 +181,55 @@ class TrackingConfig(_Section):
     implementation behind it, and the runner raises rather than silently
     running untracked.
 
+    The four tuning fields default to the values the pipeline used when they
+    were hardcoded, so omitting them reproduces the previous behaviour exactly.
+    Before they existed, three of ByteTrack's five real knobs were unreachable
+    from configuration and the fourth was welded to the detector's threshold,
+    which made a tracking sweep impossible without editing code.
+
     Attributes:
         enabled: Whether the tracking stage should run.
         backend: Tracker implementation to use.
-        minimum_track_length: Tracks shorter than this are discarded.
+        minimum_track_length: Tracks shorter than this are discarded, after the
+            whole clip has been tracked.
+        activation_threshold: Score at which a detection may participate fully
+            in association. ``None`` follows ``model.confidence_threshold``,
+            which is what the pipeline did unconditionally before.
+        lost_track_buffer: Frames a track survives unmatched, expressed at
+            30 fps; ByteTrack rescales it by the clip's actual rate.
+        minimum_matching_threshold: IoU-distance threshold for association.
+        minimum_consecutive_frames: Frames a new track must be seen in before it
+            is reported. A cheaper, online alternative to
+            ``minimum_track_length``, which can only be applied afterwards.
+        score_floor: Rescale detection scores into ``[score_floor, 1]`` before
+            association, to clear ByteTrack's hardcoded 0.1 discard floor. The
+            original scores are restored before anything is written. ``None``
+            disables it. See
+            :class:`~panaf_ape_detection.tracking.bytetrack.ScoreFloor`.
+        stitch_max_gap: Frames a gap may span for two track fragments to be
+            joined as one animal. ``0`` disables stitching.
+        stitch_max_distance: Positional tolerance for that join, in box
+            diagonals.
+        interpolate_max_gap: Frames of an interior gap to fill with synthesised
+            boxes, each marked ``interpolated``. ``0`` disables it. The only
+            setting here that can raise coverage above detection recall.
+        smooth_window: Odd window of frames to average each track's boxes over.
+            ``1`` disables smoothing. Affects only where boxes sit, never which
+            frames or identities they have.
     """
 
     enabled: bool
     backend: TrackingBackend
     minimum_track_length: int = Field(ge=1)
+    activation_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    lost_track_buffer: int = Field(default=30, ge=1)
+    minimum_matching_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
+    minimum_consecutive_frames: int = Field(default=1, ge=1)
+    score_floor: float | None = Field(default=None, ge=0.0, lt=1.0)
+    stitch_max_gap: int = Field(default=0, ge=0)
+    stitch_max_distance: float = Field(default=1.0, gt=0.0)
+    interpolate_max_gap: int = Field(default=0, ge=0)
+    smooth_window: int = Field(default=1, ge=1)
 
     def model_post_init(self, _context: object, /) -> None:
         """Reject the contradictory ``enabled: true`` + ``backend: none`` pair."""
@@ -199,6 +239,33 @@ class TrackingConfig(_Section):
                 "Choose a backend (e.g. 'bytetrack') or set tracking.enabled to false."
             )
             raise ValueError(msg)
+
+    @field_validator("smooth_window", mode="after")
+    @classmethod
+    def _window_must_have_a_centre(cls, value: int) -> int:
+        """Reject an even smoothing window.
+
+        An even window has no centre frame, so it would shift every box half a
+        frame forward in time -- a lag that looks like a tracking error.
+        """
+        if value % 2 == 0:
+            msg = f"tracking.smooth_window must be odd so it has a centre frame, got {value}"
+            raise ValueError(msg)
+        return value
+
+    def resolved_activation_threshold(self, confidence_threshold: float) -> float:
+        """Return the activation threshold to hand the tracker.
+
+        Args:
+            confidence_threshold: ``model.confidence_threshold``, used when no
+                activation threshold is configured.
+
+        Returns:
+            The configured value, or the detector's threshold when unset.
+        """
+        if self.activation_threshold is None:
+            return confidence_threshold
+        return self.activation_threshold
 
 
 class VideoConfig(_Section):
@@ -210,6 +277,10 @@ class VideoConfig(_Section):
         draw_confidence: Render detector scores on each box.
         draw_track_id: Render tracker identities on each box.
         draw_behavior_label: Render the dataset-provided behaviour label.
+        write_annotated: Whether to encode an annotated MP4 per clip. Defaults to
+            true, which is the behaviour that existed before this field. Turn it
+            off for a run whose product is metrics: encoding 500 clips costs
+            gigabytes and a second decode pass each, for video nobody watches.
     """
 
     output_fps: float = Field(gt=0.0, le=240.0)
@@ -217,6 +288,7 @@ class VideoConfig(_Section):
     draw_confidence: bool
     draw_track_id: bool
     draw_behavior_label: bool
+    write_annotated: bool = True
 
 
 class LoggingConfig(_Section):
@@ -298,9 +370,31 @@ class Config(_Section):
             "model.device": self.model.device.value,
             "tracking.enabled": str(self.tracking.enabled),
             "tracking.backend": self.tracking.backend.value,
+            "tracking.minimum_track_length": str(self.tracking.minimum_track_length),
+            "tracking.activation_threshold": _describe_activation(self),
+            "tracking.lost_track_buffer": str(self.tracking.lost_track_buffer),
+            "tracking.minimum_matching_threshold": str(self.tracking.minimum_matching_threshold),
+            "tracking.minimum_consecutive_frames": str(self.tracking.minimum_consecutive_frames),
+            "tracking.score_floor": str(self.tracking.score_floor),
+            "tracking.stitch_max_gap": str(self.tracking.stitch_max_gap),
+            "tracking.interpolate_max_gap": str(self.tracking.interpolate_max_gap),
+            "tracking.smooth_window": str(self.tracking.smooth_window),
             "video.output_fps": str(self.video.output_fps),
             "logging.level": self.logging.level,
         }
+
+
+def _describe_activation(config: Config) -> str:
+    """Render the tracker's activation threshold, and where it came from.
+
+    Worth the annotation: the value is the detector's confidence threshold
+    whenever it is unset, and a reader comparing two configs needs to see that
+    it followed rather than that it was chosen.
+    """
+    resolved = config.tracking.resolved_activation_threshold(config.model.confidence_threshold)
+    if config.tracking.activation_threshold is None:
+        return f"{resolved} (from model.confidence_threshold)"
+    return str(resolved)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

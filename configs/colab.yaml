@@ -44,9 +44,15 @@ model:
   device: cuda
 
 tracking:
+  # Must match configs/base.yaml -- `make verify` checks the two agree about
+  # which pipeline stages run. See base.yaml for what each setting does.
   enabled: true
   backend: bytetrack
   minimum_track_length: 5
+  activation_threshold: null
+  lost_track_buffer: 30
+  minimum_matching_threshold: 0.8
+  minimum_consecutive_frames: 1
 
 video:
   output_fps: 24.0

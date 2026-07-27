@@ -1,0 +1,36 @@
+# Stage 1 of the tracking sweep: how boxes are associated into tracks.
+#
+# Run with:
+#   panaf-phase1 track-sweep --grid configs/sweeps/association.yaml -j 8 \
+#       --detections-dir <a detector-only run at confidence 0.05>
+#
+# Every axis includes the configured default, so the baseline is one of the
+# arms and "better" always means better than what the pipeline does today.
+#
+# Costs no GPU. Detection is already done; this only re-runs association.
+name: association
+
+axes:
+  # How much of the saved detection tail to feed the tracker. Only meaningful
+  # against detections written at a low threshold -- boxes below the threshold
+  # they were saved at were never recorded and cannot be recovered here.
+  #
+  # 0.10 is the interesting one: supervision discards anything at or below 0.10
+  # anyway, so feeding it is free, and filtering above it throws away boxes the
+  # tracker could have used to bridge a gap.
+  detection_floor: [0.0, 0.10, 0.20]
+
+  # Decoupled from the detector's threshold for the first time. Faint boxes
+  # should *extend* a track, not start one, and this is the knob that decides
+  # where that line sits. Note supervision needs activation + 0.10 to start a
+  # track at all, so 0.20 here means a new track requires a 0.30 detection.
+  activation_threshold: [0.10, 0.15, 0.20, 0.30]
+
+  # Frames a lost track survives, at 30 fps -- supervision rescales by the
+  # clip's rate, so 30 is 24 frames (1.0 s) on PanAf's 24 fps footage. Longer
+  # buffers should reduce fragmentation, at the risk of re-attaching a track to
+  # the wrong animal, which is what `purity` and `merges` are there to catch.
+  lost_track_buffer: [30, 60, 120]
+
+  # IoU-distance threshold for association. Lower is more permissive.
+  minimum_matching_threshold: [0.7, 0.8, 0.9]

@@ -300,6 +300,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="Select and report; download nothing."
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "Take every annotated clip in the deposit instead of a purposive sample. "
+            "Roughly 500 clips and ~1.1 GB of video; --count and --pool are ignored."
+        ),
+    )
     arguments = parser.parse_args(argv)
 
     from panaf_ape_detection.manifest import MANIFEST_COLUMNS
@@ -316,9 +324,16 @@ def main(argv: list[str] | None = None) -> int:
             candidates.append((split, clip_id))
     print(f"{len(candidates)} annotated clips in the deposit")
 
-    # Even stride across the listing keeps the pool spread over all three splits.
-    step = max(1, len(candidates) // arguments.pool)
-    pool = candidates[::step][: arguments.pool]
+    if arguments.all:
+        # The whole deposit. Purposive selection exists to make a *small* sample
+        # representative; taking everything makes it moot, and the dataset's own
+        # train/validation/test split -- recorded per row -- is what a tuning
+        # experiment should be divided by instead.
+        pool = candidates
+    else:
+        # Even stride across the listing keeps the pool spread over all three splits.
+        step = max(1, len(candidates) // arguments.pool)
+        pool = candidates[::step][: arguments.pool]
 
     cache = REPO_ROOT / "artifacts" / "panaf500_annotation_cache"
     cache.mkdir(parents=True, exist_ok=True)
@@ -330,15 +345,25 @@ def main(argv: list[str] | None = None) -> int:
     usable = [p for p in profiles if p is not None]
     print(f"  profiled {len(usable)}")
 
-    selected = select(usable, arguments.count)
+    if arguments.all:
+        selected = [(profile, "whole deposit (--all)") for profile in usable]
+    else:
+        selected = select(usable, arguments.count)
 
     print(f"\nSelected {len(selected)} clips:\n")
-    for profile, reason in selected:
-        print(
-            f"  {profile.clip_id}  [{profile.split}]  "
-            f"{profile.frames} frames, {profile.boxes} boxes"
-        )
-        print(f"      {reason}")
+    # The per-clip reasons are the point of a purposive sample and noise for the
+    # whole deposit, where the split counts are what matters instead.
+    if arguments.all:
+        by_split = Counter(profile.split for profile, _ in selected)
+        for split in SPLITS:
+            print(f"  {split:<12} {by_split.get(split, 0)} clips")
+    else:
+        for profile, reason in selected:
+            print(
+                f"  {profile.clip_id}  [{profile.split}]  "
+                f"{profile.frames} frames, {profile.boxes} boxes"
+            )
+            print(f"      {reason}")
 
     covered: set[str] = set()
     for profile, _ in selected:

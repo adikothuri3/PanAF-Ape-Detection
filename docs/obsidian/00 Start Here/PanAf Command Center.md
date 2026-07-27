@@ -2,7 +2,7 @@
 tags: [command-center, start-here]
 status: active
 phase: "Phase 1 — See · steps 1-6 complete; cheap experiments before any fine-tuning"
-updated: 2026-07-26
+updated: 2026-07-27
 ---
 
 # PanAf Command Center
@@ -28,8 +28,13 @@ using the current default `MDV6-yolov10-e` with ByteTrack:
 | **Current (`MDV6-yolov10-e`)** | **0.931** | **0.715** | **0.809** | 0.852 |
 | Previous (`MDV6-yolov9-c`) | 0.917 | 0.353 | 0.509 | 0.832 |
 
-3564 of 4985 apes found, 265 false positives. Tracking: 54 tracks over 23 individuals, 36 ID
-switches, **coverage 0.715**, 13 mostly-tracked, only 2 mostly-lost (was 9).
+3564 of 4985 apes found, 265 false positives. Tracking as shipped: 54 tracks over 23 individuals,
+36 ID switches, **coverage 0.715**, 13 mostly-tracked, only 2 mostly-lost (was 9).
+
+**Tracking coverage equalled detection recall to four decimal places (0.7149 vs 0.7149)** — every
+detected ape was already tracked, and no track ever covered a frame the detector missed. Coverage
+could not be improved by tuning; only identity could. That finding drove the tracking work below,
+which has a candidate at **4 ID switches** pending validation on the full dataset. See [[tracking]].
 
 Four clips are now above 0.95 recall, including the infrared night clip (0.963) that scored **0.009**
 when this project started. The remaining weak spots are `isfRigsIjO` (0.211 recall, near-darkness --
@@ -47,34 +52,43 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
 
 ## Current Active Task
 
-**None — the variant comparison is done, and it settled the open question.**
+**Validate the tracking candidate on the full dataset. One Colab session.**
 
-`MDV6-yolov10-e` nearly doubles recall at unchanged precision, for one line of config and 22 seconds
-of extra compute on the whole sample. Plain-English write-up:
-[variant comparison](../../../reports/variant_comparison_2026-07-27.md).
+Tracking has been rebuilt and tuned: **36 ID switches → 4**, fragmentation 2.57 → 1.13, jitter down
+82%, and coverage past the ceiling it was previously pinned to. Details: [[tracking]] and the
+2026-07-27 entry in the [log](../../../experiments/experiment_log.md).
 
-The decision to make: adopt it as the default variant (recommended — see below).
+**But it was tuned and measured on the same 10 clips**, which were purposively chosen to be hard.
+That is the circumstance under which a tuned result means least, so the settings sit in
+[`configs/tracking-candidate.yaml`](../../../configs/tracking-candidate.yaml) and **not** in
+`base.yaml`.
+
+What to run — everything is already in place:
+
+1. `python scripts/fetch_panaf500.py --all` — all 500 clips, ~1.1 GB.
+2. `detect --config configs/colab-full500.yaml` — detector-only at confidence 0.05,
+   **~100 minutes on an A100** (measured: 121 s per 10 clips). Section 11 of the notebook does both.
+3. `track-sweep` on the dataset's own `train` split, confirm on `validation`, touch `test` **once**.
+4. Adopt into `base.yaml` + `colab.yaml` only if it holds, and report full-500 and hard-10 numbers
+   separately so the easier clips do not flatter it.
 
 ## Next Recommended Task
 
-**Adopt the better model, then attack tracking — detection is no longer the bottleneck.**
+**After validation: re-render the showcase clips, then Phase 2.**
 
-1. **Switch `configs/base.yaml` and `colab.yaml` to `MDV6-yolov10-e`**, keeping the 0.20 threshold,
-   which is now the *right* threshold: the new model peaks there and degrades gently either side.
-   Then re-run all 10 clips once, so the annotated videos and headline numbers come from the model
-   we actually recommend.
-2. **Tracking is now the limit.** Coverage doubled to 0.728, but ID switches went 19 → 46 — more
-   apes on screen means more chances to confuse two of them. Free things to try first, all over
-   saved detections with `panaf-phase1 track`: ByteTrack activation at 0.20 rather than 0.05
-   (already measured as better on every axis) and a lower `minimum_track_length`.
-3. **Only then consider fine-tuning.** The case is much weaker than it looked: the gap was
-   **capacity, not domain mismatch**, and a config change closed most of it. See
-   [the write-up](../../../reports/variant_comparison_2026-07-27.md) for what fine-tuning would and
-   would not fix.
+1. **Re-render 2–3 annotated clips** from the adopted settings. The smoothing is worth seeing — this
+   is the deliverable a reader actually watches.
+2. **Fine-tuning is now a weaker case than ever.** Tracking was the bottleneck and it was fixed with
+   configuration plus two post-processing steps; detection is the limit again, and the last variant
+   change closed most of that gap. Revisit only with evidence from the 500-clip run.
+3. **Phase 2 — Pose** becomes unblocked once tracks are trustworthy. Note the `interpolated` flag on
+   tracked detections: those boxes were synthesised to bridge detector gaps, and pose work must be
+   able to exclude them.
 
-The threshold question is closed. `yolov9-c`'s F1 rose all the way down to 0.05, so its optimum was
-never found; `yolov10-e` peaks at the shipped default. The mistuned operating point was a symptom of
-the smaller model, not a property of the footage.
+The threshold question is reopened, in a useful way. 0.20 is the right threshold for *reporting*
+detection accuracy, but the tracking work found it is the wrong one for *running* the pipeline:
+detecting at 0.05 and letting the tracker discard the junk gives a tracked precision of 0.9556
+against 0.9308, at higher recall.
 
 ## Reading Progress
 

@@ -1,0 +1,78 @@
+# The whole of PanAf500, detector-only, on a Colab GPU.
+#
+# Purpose: produce the detection cache that tracking is tuned and validated
+# against. Tracking settings tuned on 10 clips prove nothing about tracking; the
+# dataset ships its own train/validation/test split, and this run is what makes
+# using it possible.
+#
+#   panaf-phase1 fetch-clips is purposive by design, so use the script directly:
+#     python scripts/fetch_panaf500.py --all
+#     python -m panaf_ape_detection.cli detect --config configs/colab-full500.yaml
+#     python -m panaf_ape_detection.cli track-sweep --grid configs/sweeps/association.yaml -j 8
+#
+# Measured cost, from experiments/experiment_log.md: an A100 does 10 clips
+# (3,600 frames) in 121 s with this variant. 500 clips is ~180,000 frames, so
+# budget ~100 minutes of GPU plus ~1.1 GB of video download. One session.
+#
+# Clips already done are skipped, so a dropped session resumes -- and a resumed
+# run now re-measures rather than reporting nothing.
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: full500
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  # Its own directory: this is a different experiment from the 10-clip baseline
+  # and must not overwrite it.
+  artifacts_dir: artifacts/full500
+
+data:
+  manifest_path: data/sample_manifest.csv
+  max_clips: 500
+  # Never stride for a tracking experiment. Tracking is about what happens
+  # between consecutive frames; dropping every other one changes the thing being
+  # measured, not just how long it takes.
+  frame_stride: 1
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  variant: MDV6-yolov10-e
+  # 0.05, not the 0.20 used for reporting detection accuracy. Boxes below the
+  # threshold are never written, so a cache built at 0.20 could never be swept
+  # downward -- and the tracking work needs the low tail: `score_floor` exists
+  # precisely to feed ByteTrack the 0.05-0.20 band it would otherwise discard.
+  #
+  # This is not a claim that 0.05 is a good detection threshold. It is not:
+  # raw precision at 0.05 is 0.64. It is the right threshold to *cache* at,
+  # because everything above it can be recovered and nothing below it can.
+  confidence_threshold: 0.05
+  device: auto
+
+tracking:
+  # Off. This run measures the detector and builds the cache; tracking is then
+  # explored over that cache with `track` and `track-sweep`, at no GPU cost.
+  # Leaving it on would also run drop_short_tracks before evaluation and confound
+  # the detection numbers.
+  enabled: false
+  backend: none
+  minimum_track_length: 5
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+  # 500 annotated MP4s is gigabytes of video nobody will watch, and each one
+  # costs a second full decode of the clip. The showcase clips are rendered
+  # separately, from the adopted settings.
+  write_annotated: false
+
+logging:
+  level: INFO
+  save_run_metadata: true

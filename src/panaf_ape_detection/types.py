@@ -167,10 +167,20 @@ class TrackedDetection(Detection):
         track_id: Identity assigned by the tracker; stable within one clip only.
         behavior_label: Dataset-provided behaviour label to display alongside the
             box, when one is available. This is never predicted by the detector.
+        interpolated: Whether this box was **synthesised** to bridge a gap inside
+            a track rather than produced by the detector. Defaults to ``False``,
+            so records written before the field existed load unchanged.
+
+            It exists so that a synthetic box can never be mistaken for a
+            measurement. Interpolation is the only way tracking coverage can
+            exceed detection recall, which makes it exactly the kind of gain that
+            must stay labelled: Phase 2 pose estimation has to be able to exclude
+            boxes no detector ever saw.
     """
 
     track_id: int = Field(ge=0)
     behavior_label: str | None = None
+    interpolated: bool = False
 
 
 class FrameDetections(_StrictModel):

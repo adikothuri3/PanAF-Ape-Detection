@@ -25,6 +25,7 @@ import logging
 import platform
 import shutil
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -63,6 +64,9 @@ _error_console = Console(stderr=True)
 
 _OK = "[green]yes[/green]"
 _NO = "[yellow]no[/yellow]"
+
+_SWEEP_METRICS_SUBDIR = "tracking-sweep"
+"""Where sweep records live, relative to ``artifacts/metrics/``."""
 
 _INFERENCE_MODULES: tuple[tuple[str, str], ...] = (
     ("PytorchWildlife", "PyTorch-Wildlife"),
@@ -455,19 +459,35 @@ def _report(results: list[ClipResult]) -> None:
 def _track_table(evaluations: Iterable[ClipTrackEvaluation | None]) -> Table:
     """Build the per-clip track-quality table shared by ``detect`` and ``track``."""
     table = Table(title="Track quality", show_header=True, header_style="bold")
-    for column in ("Clip", "Frames", "Apes", "Tracks", "ID sw.", "Frag.", "Coverage", "MT", "ML"):
+    for column in (
+        "Clip",
+        "Apes",
+        "Tracks",
+        "ID sw.",
+        "Frag.",
+        "Coverage",
+        "ID cov.",
+        "Purity",
+        "Merges",
+        "Jitter",
+        "MT",
+        "ML",
+    ):
         table.add_column(column)
     for evaluation in evaluations:
         if evaluation is None:  # pragma: no cover - callers filter these out
             continue
         table.add_row(
             evaluation.clip_id,
-            str(evaluation.frames_evaluated),
             str(len(evaluation.individuals)),
             str(evaluation.predicted_tracks),
             str(evaluation.total_id_switches),
             f"{evaluation.mean_fragmentation:.2f}",
             f"{evaluation.mean_coverage:.3f}",
+            f"{evaluation.mean_identity_coverage:.3f}",
+            f"{evaluation.mean_track_purity:.3f}",
+            str(evaluation.id_merges),
+            f"{evaluation.mean_jitter:.4f}",
             str(evaluation.mostly_tracked),
             str(evaluation.mostly_lost),
         )
@@ -476,8 +496,13 @@ def _track_table(evaluations: Iterable[ClipTrackEvaluation | None]) -> Table:
 
 _TRACK_LEGEND = (
     "[dim]Frag. is predicted tracks per annotated ape (1.00 is ideal, 0 means never tracked). "
-    "MT/ML count individuals covered in >=80% / <=20% of their frames. Fragmentation is bounded "
-    "by detection recall: a box that was never detected cannot be associated.[/dim]"
+    "ID cov. is the share of an ape's frames held by its single best track -- unlike Coverage it "
+    "falls when one ape is split across several tracks, so it is the number to tune against. "
+    "Purity is the share of a track's frames belonging to one ape, and Merges counts tracks that "
+    "covered more than one: together they catch the failure every other column here rewards, "
+    "joining two apes into a single track. Jitter is normalised box shake; lower is smoother. "
+    "MT/ML count individuals covered in >=80% / <=20% of their frames. Coverage is bounded by "
+    "detection recall: a box that was never detected cannot be associated.[/dim]"
 )
 
 
@@ -550,13 +575,19 @@ def detect(
 
 
 def _saved_detection_documents(
-    loaded: Config,
+    loaded: Config, *, detections_dir: Path | None = None
 ) -> Iterator[tuple[ManifestRow, str, dict[str, Any]]]:
     """Yield ``(row, annotation filename, document)`` per clip with saved detections.
 
     Rows with no stored detections, or no annotation file to compare against,
     are skipped -- both are ordinary when only part of the manifest has been
     run locally.
+
+    Args:
+        loaded: The resolved configuration.
+        detections_dir: Read from here instead of ``<artifacts>/detections``,
+            so an experiment can run against another run's output without
+            copying it or pointing the whole config elsewhere.
 
     Raises:
         typer.Exit: If the manifest cannot be read.
@@ -566,6 +597,7 @@ def _saved_detection_documents(
     from panaf_ape_detection.pipeline.runner import load_manifest
 
     paths = loaded.repository_paths()
+    directory = detections_dir if detections_dir is not None else paths.artifacts_dir / "detections"
     try:
         rows = load_manifest(loaded.data.manifest_path)
     except FileNotFoundError as exc:
@@ -573,7 +605,7 @@ def _saved_detection_documents(
         raise typer.Exit(code=1) from exc
 
     for row in rows:
-        stored = paths.artifacts_dir / "detections" / f"{row.clip_id}.json"
+        stored = directory / f"{row.clip_id}.json"
         annotation = row.annotation_filename
         if not stored.is_file() or not annotation:
             continue
@@ -606,6 +638,7 @@ def evaluate(
     from panaf_ape_detection.data.annotations import load_ground_truth
     from panaf_ape_detection.evaluation.detection import evaluate_clip
     from panaf_ape_detection.inference.filtering import filter_by_confidence
+    from panaf_ape_detection.reporting import detection_fields
     from panaf_ape_detection.types import Detection as _Detection
 
     loaded = _load_or_exit(config)
@@ -635,9 +668,12 @@ def evaluate(
 
         # `evaluate_clip` records the threshold but does not apply it, so the
         # filtering has to happen here for --confidence to mean anything.
+        #
+        # `detection_fields` rather than `_Detection(**d)`: a document written
+        # with tracking on carries track_id, which `Detection` forbids.
         predictions = {
             frame["frame_index"]: filter_by_confidence(
-                [_Detection(**d) for d in frame["detections"]], threshold
+                [_Detection(**detection_fields(d)) for d in frame["detections"]], threshold
             )
             for frame in document["frames"]
         }
@@ -685,6 +721,46 @@ def evaluate(
     )
 
 
+def _clip_sources(loaded: Config, detections_dir: Path | None) -> list[Any]:
+    """Collect the clips a re-tracking command can work over.
+
+    Args:
+        loaded: The resolved configuration.
+        detections_dir: Read detections from here instead of the configured
+            artifacts directory.
+
+    Returns:
+        A list of :class:`~panaf_ape_detection.pipeline.retrack.ClipSource`.
+    """
+    from panaf_ape_detection.pipeline.retrack import ClipSource
+
+    paths = loaded.repository_paths()
+    annotations = paths.raw_data_dir / "panaf500" / "annotations"
+    override = Path(detections_dir) if detections_dir is not None else None
+
+    sources: list[Any] = []
+    for row, annotation, _ in _saved_detection_documents(loaded, detections_dir=override):
+        stored = (override or paths.artifacts_dir / "detections") / f"{row.clip_id}.json"
+        sources.append(
+            ClipSource(
+                clip_id=row.clip_id,
+                detections_path=stored,
+                annotation_path=annotations / annotation,
+            )
+        )
+    return sources
+
+
+def _exit_without_the_inference_extra() -> typer.Exit:
+    """Explain a missing ``supervision`` rather than showing an ImportError."""
+    _error_console.print(
+        "[red]The inference extra is not installed.[/red]\n"
+        "Tracking needs [bold]supervision[/bold]; run "
+        "[bold]uv sync --extra inference[/bold]."
+    )
+    return typer.Exit(code=1)
+
+
 @app.command()
 def track(
     config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
@@ -692,24 +768,56 @@ def track(
         int | None,
         typer.Option("--min-track-length", min=1, help="Override tracking.minimum_track_length."),
     ] = None,
+    activation_threshold: Annotated[
+        float | None,
+        typer.Option(
+            "--activation", min=0.0, max=1.0, help="Override tracking.activation_threshold."
+        ),
+    ] = None,
+    lost_track_buffer: Annotated[
+        int | None,
+        typer.Option("--buffer", min=1, help="Override tracking.lost_track_buffer."),
+    ] = None,
+    minimum_matching_threshold: Annotated[
+        float | None,
+        typer.Option("--match", min=0.0, max=1.0, help="Override minimum_matching_threshold."),
+    ] = None,
+    minimum_consecutive_frames: Annotated[
+        int | None,
+        typer.Option("--min-consecutive", min=1, help="Override minimum_consecutive_frames."),
+    ] = None,
+    detection_floor: Annotated[
+        float,
+        typer.Option(
+            "--detection-floor",
+            min=0.0,
+            max=1.0,
+            help="Drop saved detections below this score before tracking.",
+        ),
+    ] = 0.0,
+    detections_dir: Annotated[
+        Path | None,
+        typer.Option("--detections-dir", help="Read detections from here instead of artifacts/."),
+    ] = None,
+    metrics_dir: Annotated[
+        Path | None,
+        typer.Option("--metrics-dir", help="Write track metrics here instead of artifacts/."),
+    ] = None,
 ) -> None:
     """Track saved detections and measure identity quality against ``ape_id``.
 
-    Runs the configured tracker over ``artifacts/detections/`` rather than over
-    video, so tracker settings can be explored on a laptop in seconds without
-    re-running the detector. Track ids already stored in those files are
-    discarded and recomputed, so the numbers always match the settings printed.
+    Runs the tracker over ``artifacts/detections/`` rather than over video, so
+    settings can be explored on a laptop in seconds without re-running the
+    detector. Track ids already stored in those files are discarded and
+    recomputed, so the numbers always match the settings printed.
 
-    Reports ID switches, fragmentation and coverage per clip, and writes
-    ``artifacts/metrics/tracking/<clip>.json``.
+    Every override defaults to the configured value, so plain ``track`` measures
+    exactly what ``detect`` would produce. ``--detections-dir`` and
+    ``--metrics-dir`` keep an experiment from overwriting a baseline in place.
     """
     import json as _json
 
-    from panaf_ape_detection.data.annotations import load_ground_truth
-    from panaf_ape_detection.evaluation.tracking import evaluate_tracking
-    from panaf_ape_detection.pipeline.runner import build_tracker
-    from panaf_ape_detection.tracking.bytetrack import drop_short_tracks
-    from panaf_ape_detection.types import Detection as _Detection
+    from panaf_ape_detection.pipeline.retrack import RetrackSettings, load_clip, track_clips
 
     loaded = _load_or_exit(config)
     if not loaded.tracking.enabled:
@@ -718,84 +826,206 @@ def track(
         )
         raise typer.Exit(code=1)
 
-    paths = loaded.repository_paths()
-    raw_root = paths.raw_data_dir / "panaf500"
-    minimum = minimum_track_length or loaded.tracking.minimum_track_length
+    overrides: dict[str, float | int] = {"detection_floor": detection_floor}
+    for name, value in (
+        ("minimum_track_length", minimum_track_length),
+        ("activation_threshold", activation_threshold),
+        ("lost_track_buffer", lost_track_buffer),
+        ("minimum_matching_threshold", minimum_matching_threshold),
+        ("minimum_consecutive_frames", minimum_consecutive_frames),
+    ):
+        if value is not None:
+            overrides[name] = value
+    settings = RetrackSettings.from_config(loaded).with_values(overrides)
 
-    evaluations: list[ClipTrackEvaluation] = []
-    for row, annotation, document in _saved_detection_documents(loaded):
-        video = document["video"]
-        try:
-            # A fresh tracker per clip, sized and timed from that clip.
-            tracker = build_tracker(
-                loaded,
-                frame_rate=float(video["fps"]),
-                frame_width=int(video["width"]),
-                frame_height=int(video["height"]),
-            )
-        except ValueError as exc:
-            _error_console.print(f"[red]{exc}[/red]")
-            raise typer.Exit(code=1) from exc
-        except ImportError as exc:
-            _error_console.print(
-                "[red]The inference extra is not installed.[/red]\n"
-                "Tracking needs [bold]supervision[/bold]; run "
-                "[bold]uv sync --extra inference[/bold]."
-            )
-            raise typer.Exit(code=1) from exc
-        assert tracker is not None  # tracking.enabled was checked above
-
-        # Frame order matters: a tracker fed frames out of order produces
-        # meaningless motion estimates, and JSON preserves file order only.
-        frames = sorted(document["frames"], key=lambda frame: int(frame["frame_index"]))
-        tracked: dict[int, list[Any]] = {}
-        for frame in frames:
-            # Rebuild as plain Detections so any stored track_id is ignored.
-            detections = [
-                _Detection(
-                    box=d["box"],
-                    confidence=d["confidence"],
-                    category_id=d["category_id"],
-                    category_name=d["category_name"],
-                )
-                for d in frame["detections"]
-            ]
-            tracked[int(frame["frame_index"])] = tracker.update(detections)
-
-        tracked = dict(drop_short_tracks(tracked, minimum))
-        truth = load_ground_truth(
-            raw_root / "annotations" / annotation,
-            frame_width=video["width"],
-            frame_height=video["height"],
-            clip_id=row.clip_id,
-        )
-        evaluation = evaluate_tracking(row.clip_id, tracked, truth)
-
-        destination = paths.artifacts_dir / "metrics" / TRACK_METRICS_SUBDIR / f"{row.clip_id}.json"
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(
-            _json.dumps(
-                {**evaluation.as_dict(), "minimum_track_length": minimum}, indent=2, sort_keys=True
-            ),
-            encoding="utf-8",
-        )
-
-        evaluations.append(evaluation)
-
-    if not evaluations:
+    sources = _clip_sources(loaded, detections_dir)
+    if not sources:
         _error_console.print(
             "[yellow]No saved detections found.[/yellow] "
             "Run [bold]panaf-phase1 detect[/bold] first."
         )
         raise typer.Exit(code=1)
 
+    try:
+        evaluations = track_clips(
+            ((source.clip_id, *load_clip(source)) for source in sources), settings
+        )
+    except ImportError as exc:
+        raise _exit_without_the_inference_extra() from exc
+
+    destination_root = Path(metrics_dir) if metrics_dir else loaded.repository_paths().artifacts_dir
+    for evaluation in evaluations:
+        destination = (
+            destination_root / "metrics" / TRACK_METRICS_SUBDIR / f"{evaluation.clip_id}.json"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            _json.dumps({**evaluation.as_dict(), **settings.as_dict()}, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
     console.print(_track_table(evaluations))
     console.print(_TRACK_LEGEND)
-    console.print(
-        f"\n[dim]tracker {loaded.tracking.backend.value}, minimum track length {minimum} "
-        f"frame(s), confidence {loaded.model.confidence_threshold:.2f}[/dim]"
+    console.print(f"\n[dim]tracker {loaded.tracking.backend.value} · {settings.as_dict()}[/dim]")
+    console.print(f"Track metrics: {destination_root / 'metrics' / TRACK_METRICS_SUBDIR}")
+
+
+@app.command("track-sweep")
+def track_sweep(
+    grid: Annotated[
+        Path, typer.Option("--grid", help="YAML sweep definition: a name and its axes.")
+    ],
+    config: Annotated[Path, _CONFIG_OPTION] = Path("configs/base.yaml"),
+    detections_dir: Annotated[
+        Path | None,
+        typer.Option("--detections-dir", help="Read detections from here instead of artifacts/."),
+    ] = None,
+    jobs: Annotated[
+        int, typer.Option("--jobs", "-j", min=1, help="Worker processes to sweep arms across.")
+    ] = 1,
+    top: Annotated[int, typer.Option("--top", min=1, help="Arms to display.")] = 15,
+) -> None:
+    """Try many tracker settings over saved detections and rank them.
+
+    Costs no GPU: detection is already done, and this only re-runs association.
+    The configured settings are the baseline every arm is compared against, so
+    an arm that fails to beat it is a real answer rather than a broken run.
+
+    Arms are ranked by **identity coverage** -- the share of each ape's frames
+    held by its single best track. Coverage alone would reward splitting one
+    animal across several tracks, and ID switches alone would reward merging two
+    animals into one; identity coverage is pushed down by both. ``purity`` and
+    ``merges`` are printed beside it so a merge-driven "win" is visible.
+
+    Writes every arm to ``artifacts/metrics/tracking-sweep/<name>.json``, which
+    is its own directory and schema because this payload is neither detection
+    nor per-clip track metrics.
+    """
+    import json as _json
+
+    import yaml
+
+    from panaf_ape_detection.pipeline.retrack import (
+        TRACKING_SWEEP_SCHEMA,
+        RetrackSettings,
+        expand_grid,
+        sweep,
     )
-    console.print(f"Track metrics: {paths.artifacts_dir / 'metrics'}")
+    from panaf_ape_detection.reporting import pooled_track_metrics
+
+    loaded = _load_or_exit(config)
+    try:
+        definition = yaml.safe_load(Path(grid).read_text(encoding="utf-8")) or {}
+        name = str(definition.get("name") or Path(grid).stem)
+        axes = definition.get("axes") or {}
+        baseline = RetrackSettings.from_config(loaded)
+        arms = expand_grid(baseline, axes)
+    except FileNotFoundError as exc:
+        _error_console.print(f"[red]no sweep grid at {grid}[/red]")
+        raise typer.Exit(code=1) from exc
+    except (ValueError, yaml.YAMLError) as exc:
+        _error_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    sources = _clip_sources(loaded, detections_dir)
+    if not sources:
+        _error_console.print(
+            "[yellow]No saved detections found.[/yellow] "
+            "Run [bold]panaf-phase1 detect[/bold] first."
+        )
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[bold]{name}[/bold]: {len(arms)} arm(s) over {len(sources)} clip(s), {jobs} job(s)"
+    )
+
+    started = time.perf_counter()
+    try:
+        results = list(sweep(sources, arms, jobs=jobs))
+    except ImportError as exc:
+        raise _exit_without_the_inference_extra() from exc
+    elapsed = time.perf_counter() - started
+
+    scored = [
+        (pooled_track_metrics([e.as_dict() for e in arm.evaluations]), arm) for arm in results
+    ]
+    # The configured settings, so "better" always means better than the pipeline.
+    reference = next((p for p, arm in scored if arm.settings == baseline), None)
+    scored.sort(key=lambda pair: pair[0].identity_coverage, reverse=True)
+
+    table = Table(title=f"{name} — ranked by identity coverage", header_style="bold")
+    for column in ("ID cov.", "Cov.", "Sw.", "Frag.", "Purity", "Merges", "Jitter", "Settings"):
+        table.add_column(column)
+    for pooled, arm in scored[:top]:
+        changed = {
+            key: value
+            for key, value in arm.settings.as_dict().items()
+            if value != baseline.as_dict()[key]
+        }
+        table.add_row(
+            f"{pooled.identity_coverage:.4f}",
+            f"{pooled.coverage:.4f}",
+            str(pooled.id_switches),
+            f"{pooled.fragmentation:.2f}",
+            f"{pooled.track_purity:.4f}",
+            str(pooled.id_merges),
+            f"{pooled.jitter:.4f}",
+            "baseline"
+            if not changed
+            else ", ".join(f"{k}={v}" for k, v in sorted(changed.items())),
+        )
+    console.print(table)
+    if reference is not None:
+        console.print(
+            f"[dim]baseline (the configured settings): identity coverage "
+            f"{reference.identity_coverage:.4f}, {reference.id_switches} switches, "
+            f"purity {reference.track_purity:.4f}[/dim]"
+        )
+    else:
+        console.print(
+            "[yellow]The configured settings are not among the arms,[/yellow] so there is "
+            "nothing here to say whether the best arm beats the pipeline. Include them in the grid."
+        )
+
+    destination = (
+        loaded.repository_paths().artifacts_dir / "metrics" / _SWEEP_METRICS_SUBDIR / f"{name}.json"
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        _json.dumps(
+            {
+                "schema": TRACKING_SWEEP_SCHEMA,
+                "name": name,
+                "clips": [source.clip_id for source in sources],
+                "baseline": baseline.as_dict(),
+                "elapsed_seconds": round(elapsed, 2),
+                "arms": [
+                    {
+                        **arm.as_dict(),
+                        "pooled": {
+                            "identity_coverage": round(pooled.identity_coverage, 4),
+                            "coverage": round(pooled.coverage, 4),
+                            "id_switches": pooled.id_switches,
+                            "fragmentation": round(pooled.fragmentation, 3),
+                            "track_purity": round(pooled.track_purity, 4),
+                            "id_merges": pooled.id_merges,
+                            "jitter": round(pooled.jitter, 5),
+                            "mostly_tracked": pooled.mostly_tracked,
+                            "mostly_lost": pooled.mostly_lost,
+                        },
+                    }
+                    for pooled, arm in scored
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    console.print(
+        f"\n{len(results)} arm(s) in {elapsed:.1f}s "
+        f"({elapsed / max(len(results), 1):.2f}s per arm)\nSweep: {destination}"
+    )
 
 
 def main() -> None:

@@ -172,6 +172,9 @@ def test_confidence_threshold_range_is_enforced(
         ("data", "max_clips", 0),
         ("video", "output_fps", 0.0),
         ("tracking", "minimum_track_length", 0),
+        ("tracking", "lost_track_buffer", 0),
+        ("tracking", "minimum_matching_threshold", 0.0),
+        ("tracking", "minimum_consecutive_frames", 0),
         ("project", "seed", -1),
     ],
 )
@@ -185,6 +188,59 @@ def test_positive_numeric_fields_are_enforced(
     config_data[section][field] = value
 
     with pytest.raises(ConfigError, match=field):
+        load_config(write_config(config_data), use_env_overrides=False)
+
+
+def test_tracker_settings_default_to_the_previously_hardcoded_values(
+    write_config: WriteConfig, config_data: dict[str, Any]
+):
+    """A config predating these fields must behave exactly as it did before.
+
+    They were constructor defaults in ``ByteTrackTracker`` that nothing plumbed
+    through, so omitting them has to reproduce the old pipeline rather than
+    quietly retune it.
+    """
+    loaded = load_config(write_config(config_data), use_env_overrides=False)
+
+    assert loaded.tracking.activation_threshold is None
+    assert loaded.tracking.lost_track_buffer == 30
+    assert loaded.tracking.minimum_matching_threshold == 0.8
+    assert loaded.tracking.minimum_consecutive_frames == 1
+
+
+def test_activation_threshold_defaults_to_the_detector_threshold(
+    write_config: WriteConfig, config_data: dict[str, Any]
+):
+    config_data["model"]["confidence_threshold"] = 0.35
+
+    loaded = load_config(write_config(config_data), use_env_overrides=False)
+
+    assert loaded.tracking.resolved_activation_threshold(0.35) == 0.35
+
+
+def test_activation_threshold_can_be_set_independently(
+    write_config: WriteConfig, config_data: dict[str, Any]
+):
+    """The point of the field: faint boxes should extend tracks, not start them.
+
+    Before it existed the tracker's activation threshold was the detector's
+    confidence threshold, so the two could not be varied against each other.
+    """
+    config_data["model"]["confidence_threshold"] = 0.05
+    config_data["tracking"]["activation_threshold"] = 0.2
+
+    loaded = load_config(write_config(config_data), use_env_overrides=False)
+
+    assert loaded.tracking.resolved_activation_threshold(0.05) == 0.2
+
+
+@pytest.mark.parametrize("value", [-0.1, 1.1])
+def test_activation_threshold_must_be_a_probability(
+    write_config: WriteConfig, config_data: dict[str, Any], value: float
+):
+    config_data["tracking"]["activation_threshold"] = value
+
+    with pytest.raises(ConfigError, match="activation_threshold"):
         load_config(write_config(config_data), use_env_overrides=False)
 
 
