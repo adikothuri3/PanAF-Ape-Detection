@@ -574,5 +574,5 @@ wget==3.2
     # via pytorchwildlife
 yarl==1.24.5
     # via aiohttp
-yolov5==7.0.10
+yolov5==7.0.14
     # via pytorchwildlife
