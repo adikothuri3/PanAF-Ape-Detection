@@ -495,6 +495,23 @@ def run_clip(
     )
 
 
+def _format_duration(seconds: float) -> str:
+    """Render a rough remaining time, for progress lines.
+
+    Args:
+        seconds: Estimated seconds remaining.
+
+    Returns:
+        A short human string such as ``"1h 12m"``, ``"4m"`` or ``"<1m"``.
+    """
+    if seconds < 60:
+        return "<1m"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    return f"{minutes // 60}h {minutes % 60:02d}m"
+
+
 def run_manifest(
     config: Config,
     detector: Detector,
@@ -527,8 +544,14 @@ def run_manifest(
         logger.info("verified checksums for %d clips", len(rows))
 
     started = time.perf_counter()
-    results = [
-        run_clip(
+    # A loop rather than a comprehension, so a long run says where it is. Over
+    # 500 clips the comprehension printed nothing for well over an hour, which
+    # is indistinguishable from a hang -- and on a Colab session that drops and
+    # resumes, being unable to see progress is what makes it untrustworthy.
+    results: list[ClipResult] = []
+    total = len(rows)
+    for index, row in enumerate(rows, start=1):
+        result = run_clip(
             row,
             config,
             detector,
@@ -537,8 +560,23 @@ def run_manifest(
             overwrite=overwrite,
             limit_frames=limit_frames,
         )
-        for row in rows
-    ]
+        results.append(result)
+
+        done = time.perf_counter() - started
+        # Estimated from clips finished so far. Meaningless until one has, and
+        # skipped clips are near-instant, so it settles once real work starts.
+        remaining = (done / index) * (total - index)
+        logger.info(
+            "[%d/%d] %s: %d frame(s), %d detection(s), %.1fs — %.0f%% done, ~%s left",
+            index,
+            total,
+            row.clip_id,
+            result.frames_processed,
+            result.detections_kept,
+            result.elapsed_seconds,
+            100.0 * index / total,
+            _format_duration(remaining),
+        )
     elapsed = time.perf_counter() - started
 
     metadata = build_run_metadata(
