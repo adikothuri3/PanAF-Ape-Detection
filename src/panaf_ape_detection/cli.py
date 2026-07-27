@@ -647,7 +647,13 @@ def evaluate(
             frame_height=document["video"]["height"],
             clip_id=row.clip_id,
         )
-        evaluation = evaluate_clip(row.clip_id, predictions, truth, confidence_threshold=threshold)
+        evaluation = evaluate_clip(
+            row.clip_id,
+            predictions,
+            truth,
+            confidence_threshold=threshold,
+            model_variant=str(document["model"].get("variant", "")),
+        )
         counts = evaluation.overall
         totals[0] += counts.true_positives
         totals[1] += counts.false_positives

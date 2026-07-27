@@ -20,33 +20,21 @@ Detection, tracking, overlay, video export and evaluation all run end to end. Te
 green (**281 tests, 19 verification checks**). The repo is published at
 [adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
 
-**All 10 clips, 3600 frames, 4985 annotated boxes**, confidence 0.20 / IoU 0.50, verified MPS. Run
-twice, so the tracker's effect is isolated rather than confounded:
+**All 10 clips, 3600 frames, 4985 annotated apes**, confidence 0.20 / IoU 0.50, verified `mps:0`,
+using the current default `MDV6-yolov10-e` with ByteTrack:
 
 | | Precision | Recall | F1 | Pooled mean IoU |
 |---|---|---|---|---|
-| Detector only | 0.874 | 0.386 | 0.536 | 0.825 |
-| + ByteTrack | **0.917** | 0.353 | 0.509 | 0.832 |
+| **Current (`MDV6-yolov10-e`)** | **0.931** | **0.715** | **0.809** | 0.852 |
+| Previous (`MDV6-yolov9-c`) | 0.917 | 0.353 | 0.509 | 0.832 |
 
-Tracking against `ape_id`: 23 individuals, 29 tracks, **17 ID switches**, fragmentation **1.35**,
-coverage 0.353. ByteTrack holds an ape it can see; coverage is capped by detection recall.
+3564 of 4985 apes found, 265 false positives. Tracking: 54 tracks over 23 individuals, 36 ID
+switches, **coverage 0.715**, 13 mostly-tracked, only 2 mostly-lost (was 9).
 
-**Precise but insensitive at 0.20 — and that threshold turned out to be the problem.** Swept over the
-same 10 clips, F1 peaks at the *lowest* value tested:
-
-| Confidence | Precision | Recall | F1 |
-|---|---|---|---|
-| **0.05** | 0.628 | **0.563** | **0.594** |
-| 0.20 *(config default)* | 0.874 | 0.386 | 0.536 |
-| 0.50 | 0.943 | 0.280 | 0.432 |
-
-The recovered detections land almost entirely on the clips that looked hopeless: the near-dark clip
-goes from **0 detections in 360 frames to recall 0.433**, `hanging` from 0.102 to 0.527. Low contrast
-depresses confidence rather than preventing detection.
-
-Getting that number required fixing a **second silently-ignored PyTorch-Wildlife parameter**:
-`det_conf_thres` was never passed, so every run inferred at the library's 0.2 default. See
-[[model]].
+Four clips are now above 0.95 recall, including the infrared night clip (0.963) that scored **0.009**
+when this project started. The remaining weak spots are `isfRigsIjO` (0.211 recall, near-darkness --
+though precision is 1.000, so what it does find is right) and `zvwY5xoIli` (0.348, small distant
+subjects).
 
 Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-26.md).
 

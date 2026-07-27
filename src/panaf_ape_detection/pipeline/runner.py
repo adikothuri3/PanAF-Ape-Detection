@@ -359,6 +359,7 @@ def run_clip(
             per_frame,
             ground_truth,
             confidence_threshold=config.model.confidence_threshold,
+            model_variant=detector.variant,
         )
         metrics_path = artifacts / "metrics" / f"{row.clip_id}.json"
         metrics_path.parent.mkdir(parents=True, exist_ok=True)

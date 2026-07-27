@@ -218,6 +218,11 @@ class ClipEvaluation:
 
     Attributes:
         clip_id: Manifest clip identifier.
+        model_variant: The exact weights that produced the predictions. Recorded
+            because a metrics directory is updated clip by clip: a run that stops
+            part-way leaves a mixture of models, and pooling that mixture yields a
+            number describing no model at all. Empty for records written before
+            this field existed.
         iou_threshold: The IoU threshold used.
         confidence_threshold: The detector score threshold the predictions had
             already been filtered at.
@@ -236,6 +241,7 @@ class ClipEvaluation:
     iou_threshold: float
     confidence_threshold: float
     overall: MatchCounts
+    model_variant: str = ""
     by_behaviour: Mapping[str, MatchCounts] = field(default_factory=dict)
     by_size: Mapping[str, MatchCounts] = field(default_factory=dict)
     frames_evaluated: int = 0
@@ -253,6 +259,7 @@ class ClipEvaluation:
         return {
             "schema": DETECTION_METRICS_SCHEMA,
             "clip_id": self.clip_id,
+            "model_variant": self.model_variant,
             "iou_threshold": self.iou_threshold,
             "confidence_threshold": self.confidence_threshold,
             "frames_evaluated": self.frames_evaluated,
@@ -272,6 +279,7 @@ def evaluate_clip(
     *,
     iou_threshold: float = DEFAULT_IOU_THRESHOLD,
     confidence_threshold: float = 0.0,
+    model_variant: str = "",
 ) -> ClipEvaluation:
     """Evaluate one clip's detections against its ground truth.
 
@@ -286,6 +294,8 @@ def evaluate_clip(
         iou_threshold: Minimum IoU for a match.
         confidence_threshold: The score threshold already applied, recorded so
             the result is interpretable on its own.
+        model_variant: The weights that produced *predictions*, recorded for the
+            same reason.
 
     Returns:
         The clip's :class:`ClipEvaluation`.
@@ -343,6 +353,7 @@ def evaluate_clip(
         clip_id=clip_id,
         iou_threshold=iou_threshold,
         confidence_threshold=confidence_threshold,
+        model_variant=model_variant,
         overall=overall,
         # Only recall is defined per behaviour and per size: a false positive
         # has no ground-truth label to attribute it to.

@@ -43,6 +43,7 @@ __all__ = [
     "recall_by_behaviour",
     "recall_by_size",
     "score_bands",
+    "variants_in",
 ]
 
 TRACK_METRICS_SUBDIR = "tracking"
@@ -209,6 +210,25 @@ def load_track_metrics(artifacts_dir: Path | str) -> list[dict[str, object]]:
 
     loaded = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     return sorted(loaded, key=lambda d: str(d.get("clip_id", "")))
+
+
+def variants_in(metrics: Iterable[Mapping[str, object]]) -> set[str]:
+    """Return the model variants that produced *metrics*.
+
+    More than one means the directory is **mixed** -- almost always a run that
+    stopped part-way, leaving some clips measured with the old model and some
+    with the new. Pooling that mixture produces a number describing no model at
+    all, and nothing else makes it visible: the files are individually valid.
+
+    An empty string appears for records written before the variant was recorded.
+
+    Args:
+        metrics: Documents from :func:`load_detection_metrics`.
+
+    Returns:
+        The distinct variant strings found.
+    """
+    return {str(document.get("model_variant", "")) for document in metrics}
 
 
 def pooled_counts(metrics: Iterable[Mapping[str, object]]) -> PooledCounts:

@@ -29,6 +29,7 @@ from panaf_ape_detection.reporting import (
     recall_by_behaviour,
     recall_by_size,
     score_bands,
+    variants_in,
 )
 
 
@@ -291,3 +292,47 @@ def test_recall_table_pins_a_requested_order_and_keeps_the_rest():
 
 def test_recall_table_handles_nothing_recorded():
     assert "nothing recorded" in format_recall_table({})
+
+
+# --------------------------------------------------------------------------- #
+# Mixed-model detection
+#
+# `detect --overwrite` rewrites metrics clip by clip, so a run that is killed
+# part-way leaves some clips on the old model. Each file is individually valid;
+# only comparing them reveals it. This happened.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_mixed_metrics_directory_is_visible(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    write(
+        root / "metrics" / "clip-a.json",
+        {**detection_metrics("clip-a"), "model_variant": "MDV6-yolov10-e"},
+    )
+    write(
+        root / "metrics" / "clip-b.json",
+        {**detection_metrics("clip-b"), "model_variant": "MDV6-yolov9-c"},
+    )
+
+    found = variants_in(load_detection_metrics(root))
+
+    assert found == {"MDV6-yolov10-e", "MDV6-yolov9-c"}
+    assert len(found) > 1, "more than one variant means the pooled number is meaningless"
+
+
+def test_a_consistent_directory_reports_one_variant(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    for clip in ("clip-a", "clip-b"):
+        write(
+            root / "metrics" / f"{clip}.json",
+            {**detection_metrics(clip), "model_variant": "MDV6-yolov10-e"},
+        )
+
+    assert variants_in(load_detection_metrics(root)) == {"MDV6-yolov10-e"}
+
+
+def test_records_written_before_the_field_existed_report_empty(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    write(root / "metrics" / "clip-a.json", detection_metrics("clip-a"))
+
+    assert variants_in(load_detection_metrics(root)) == {""}

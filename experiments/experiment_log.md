@@ -889,3 +889,66 @@ to 100%, 100% and 100% recall with a bigger model.
 **Next action**
 Adopt `MDV6-yolov10-e` as the default variant, re-run the annotated videos from it, and re-open the
 tracking question — association, not detection, is now the limit.
+
+---
+
+## 2026-07-27 (later) — Re-ran all 10 clips on the adopted variant
+
+**Objective**
+Regenerate the annotated videos and headline numbers from `MDV6-yolov10-e`, so the repository's
+outputs come from the model it actually recommends.
+
+**Environment**
+Local, verified `mps:0`. **~1.05 s/frame inference** against ~0.25 s for `yolov9-c` -- YOLOv10x is
+roughly 4x the work, and MPS does not parallelise it the way the A100 does (which did the same 10
+clips in 121 s). Total wall clock about 70 minutes.
+
+**Results — 10 clips, 3600 frames, 4985 annotated apes, confidence 0.20, tracked**
+
+| | `yolov9-c` | `yolov10-e` |
+|---|---|---|
+| Precision | 0.9165 | **0.9308** |
+| Recall | 0.3525 | **0.7149** |
+| F1 | 0.5091 | **0.8087** |
+| Pooled mean IoU | 0.8322 | 0.8519 |
+| Track coverage | 0.351 | **0.715** |
+| Mostly-lost individuals | 9 / 23 | **2 / 23** |
+
+3564 of 4985 apes found against 1757 before, at *higher* precision. Four clips now exceed 0.95
+recall, including `RHH9DDfWZa` at 0.963 -- the infrared night clip that scored **0.009** at the start
+of this project. Inspected frame 100 directly: a clean, tight prediction box on the hanging chimp,
+where the old model produced nothing across all 360 frames.
+
+Weak spots that remain: `isfRigsIjO` 0.211 recall in near-darkness (though precision 1.000 -- what it
+finds is right), and `zvwY5xoIli` 0.348 on small distant subjects.
+
+**Failures and dead ends**
+
+- **Two background runs were killed part-way**, at 8 of 10 clips. Recovered by running detached with
+  `nohup`.
+- **Resuming without `--overwrite` would have silently skipped the two unfinished clips**, because
+  the runner skips any clip that already has detections *and* a video -- regardless of which model
+  wrote them. The stale outputs had to be deleted first. A plain resume would have "completed" while
+  leaving two clips on the old model.
+- **A metrics directory updated clip by clip is a mixture, and nothing showed it.** Reading the
+  numbers mid-run pooled 3 new clips with 7 stale ones and produced a figure describing no model at
+  all. Each file was individually valid. `detections/*.json` records the variant -- which is the only
+  reason the affected clips could be identified -- but `metrics/*.json` did not.
+
+  Fixed: `ClipEvaluation` now carries `model_variant`, it is written into every metrics file, and
+  `reporting.variants_in()` exposes a mixture. The notebook **halts** rather than pooling one. Three
+  tests cover it. Note that the metrics files from *this* run pre-date the field and report an empty
+  variant; the detections files identify them.
+- My "all 10 videos are there" check counted two `_h264` re-encodes made earlier for playback
+  testing. The glob was `*.mp4` rather than `*_annotated.mp4`. Corrected; the stray files are removed.
+
+**Interpretation**
+
+The adopted variant reproduces its Colab result on entirely different hardware: A100 detector-only
+gave P 0.862 / R 0.745, local MPS tracked gives P 0.931 / R 0.715. The two paths agree, so nothing
+here is device-specific.
+
+**Next action**
+Tracking, not detection, is the remaining limit: 36 ID switches across 23 individuals. The free
+experiments come first -- ByteTrack activation and `minimum_track_length`, both re-run over saved
+detections in seconds.
