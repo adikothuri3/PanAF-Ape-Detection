@@ -31,7 +31,12 @@ data:
 model:
   framework: pytorch-wildlife
   model_name: MegaDetectorV6
-  variant: MDV6-yolov9-c
+  # MDV6-yolov10-e since 2026-07-27. Measured head-to-head against MDV6-yolov9-c
+  # over the same 10 clips at the same threshold: recall 0.386 -> 0.745 at
+  # unchanged precision (0.874 -> 0.862), and tracking coverage 0.351 -> 0.728.
+  # Costs ~22% more compute. It also peaks at the 0.20 threshold below, where
+  # yolov9-c did not. See reports/variant_comparison_2026-07-27.md.
+  variant: MDV6-yolov10-e
   confidence_threshold: 0.2
   # Colab GPU (A100 preferred; T4 works). Set the runtime *before* running
   # anything: Runtime -> Change runtime type -> GPU. Inference never runs on CPU

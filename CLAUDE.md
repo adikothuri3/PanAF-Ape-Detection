@@ -198,6 +198,11 @@ Verified variants and the two broken upstream defaults:
 [`docs/obsidian/05 Technical/model.md`](docs/obsidian/05%20Technical/model.md). **Always pass `version=`
 explicitly** — both classes' defaults raise `ValueError`.
 
+**The project variant is `MDV6-yolov10-e`.** Chosen from a measured head-to-head, not a guess:
+recall 0.386 → 0.745 at unchanged precision versus `MDV6-yolov9-c`. Do not switch back without
+evidence, and record any variant change in the experiment log —
+[variant comparison](reports/variant_comparison_2026-07-27.md).
+
 The nine dataset behaviour labels:
 [`docs/obsidian/05 Technical/dataset.md`](docs/obsidian/05%20Technical/dataset.md).
 

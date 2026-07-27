@@ -72,8 +72,18 @@ PyTorch-Wildlife exposes two MegaDetector V6 classes. Verified from the installe
 Weights are downloaded on first use from Zenodo record `15398270`. They are **not** committed here
 and `.gitignore` blocks `*.pt` / `*.pth` to keep it that way.
 
-The `-c` variants are the smaller/faster ones and `-e` the larger; the exact speed–accuracy
-trade-off on this footage is an empirical question Phase 1 does not attempt to answer.
+The `-c` variants are the smaller/faster ones and `-e` the larger.
+
+**`MDV6-yolov10-e` is the project default since 2026-07-27**, measured rather than assumed. Head to
+head against `MDV6-yolov9-c` over the same 10 clips at the same 0.20 threshold: **recall 0.386 →
+0.745 at unchanged precision** (0.874 → 0.862), tracking coverage 0.351 → 0.728, for ~22% more
+compute. Every behaviour class and every size band improved by roughly +0.25 recall, so it is not a
+large-subject effect. Full numbers:
+[variant comparison](../../../reports/variant_comparison_2026-07-27.md).
+
+The result matters beyond the config line: it says the pretrained gap on this footage was
+**capacity, not domain mismatch**, which is the question Phase 1 existed to answer and which weakens
+the case for fine-tuning.
 
 ### ⚠️ The `device=` argument is ignored — the model runs on CPU
 

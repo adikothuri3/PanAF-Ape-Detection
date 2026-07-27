@@ -32,7 +32,16 @@ model:
   model_name: MegaDetectorV6
   # The exact weight variant is recorded with every run. Do not remove it or
   # rely on an upstream default. See docs/obsidian/05 Technical/model.md for the recognised set.
-  variant: MDV6-yolov9-c
+  # MDV6-yolov10-e since 2026-07-27. Measured head-to-head against MDV6-yolov9-c
+  # over the same 10 clips at the same threshold: recall 0.386 -> 0.745 at
+  # unchanged precision (0.874 -> 0.862), and tracking coverage 0.351 -> 0.728.
+  # Costs ~22% more compute. It also peaks at the 0.20 threshold below, where
+  # yolov9-c did not. See reports/variant_comparison_2026-07-27.md.
+  variant: MDV6-yolov10-e
+  # 0.20 is where MDV6-yolov10-e peaks (F1 0.799, and 0.799 again at 0.30), and
+  # it degrades gently either side. This was NOT true of yolov9-c, whose F1 rose
+  # all the way down to 0.05 -- its optimum was never found. Boxes below this are
+  # never written to disk, so a sweep downward needs a re-run.
   confidence_threshold: 0.2
   # auto | cpu | cuda | mps
   #
