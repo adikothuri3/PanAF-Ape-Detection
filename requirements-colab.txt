@@ -265,7 +265,7 @@ nvidia-cusparse==12.6.3.3 ; (platform_machine == 'aarch64' and sys_platform == '
     # via
     #   cuda-toolkit
     #   nvidia-cusolver
-nvidia-cusparselt-cu13==0.8.1 ; sys_platform == 'linux'
+nvidia-cusparselt-cu13==0.9.1 ; sys_platform == 'linux'
     # via torch
 nvidia-ml-py==13.610.43
     # via ultralytics
