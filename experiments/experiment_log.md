@@ -952,3 +952,145 @@ here is device-specific.
 Tracking, not detection, is the remaining limit: 36 ID switches across 23 individuals. The free
 experiments come first -- ByteTrack activation and `minimum_track_length`, both re-run over saved
 detections in seconds.
+
+---
+
+## 2026-07-27 (later still) — Tracking: 36 ID switches → 4, and coverage finally broke its ceiling
+
+**Goal**
+Take the "free experiments" from the last entry as far as they go: make tracking good rather than
+merely working. Tune, do not fine-tune — Phase 1 stays pretrained-inference only.
+
+**The measurement that reframed the whole thing**
+
+Frame-weighted tracking coverage was **0.7149**. Detection recall was **0.7149**. Equal to four
+decimal places, over `artifacts/metrics/` and `artifacts/metrics/tracking/`.
+
+That is not a near-miss, it is an identity: every true-positive detection was already inside some
+track, and no track ever covered a frame the detector missed. So **no tracker setting can raise
+coverage** — it is pinned to the detector by construction. The remaining problem was never coverage;
+it was identity (54 tracks for 23 apes, 36 switches), plus the fact that the only way past the
+ceiling is to *interpolate* boxes the detector never produced.
+
+I had been about to tune for coverage. That would have been a week of moving a number that cannot
+move.
+
+**Two bugs found before any tuning started**
+
+- **`panaf-phase1 evaluate` was broken against the repository's own default artifacts.** `cli.py`
+  did `Detection(**d)`, `Detection` is `extra="forbid"`, and every record written with tracking on
+  carries `track_id` and `behavior_label`:
+
+  ```
+  ValidationError: 2 validation errors for Detection
+  track_id
+    Extra inputs are not permitted [type=extra_forbidden, input_value=1, input_type=int]
+  ```
+
+  The whole test suite passed throughout, because every CLI fixture was written with tracking
+  *off*. Fixed with a shared `reporting.detection_fields()`, and the fixture now writes track ids.
+- **A resumed run reported no metrics at all.** `run_clip`'s skip-if-present branch returned
+  `evaluation=None`. It would have silently hollowed out the 500-clip Colab run this work depends
+  on — the exact situation a dropped session produces. It now re-measures from the saved
+  detections, which costs no GPU and no video decode. Verified against the baseline: 10/10 tracking
+  metric files byte-identical, and detection metrics now additionally carry the `model_variant` the
+  old files were missing.
+
+**What was actually wrong with the tracker**
+
+Three of ByteTrack's five knobs were unreachable from configuration, and the fourth
+(`track_activation_threshold`) was welded to `model.confidence_threshold`, so it could not be varied
+against it. All four are now config fields, defaulting to the previously hardcoded values so an old
+config reproduces the old behaviour exactly.
+
+Then the upstream floor. `supervision` has `inds_low = scores > 0.1` as a **literal**: on the
+10-clip cache at confidence 0.05 that discards **1,185 of 6,384 detections, 18.6%** — thrown away
+by the low-score pass that is the entire reason ByteTrack was picked over SORT. `ScoreFloor` maps
+scores into `[floor, 1]` before association and inverts exactly afterwards, so ByteTrack sees them
+and no artifact ever records a rescaled score. A test asserts a tracked box still reports 0.42 after
+being fed through a 0.15 floor.
+
+**Method**
+
+Staged sweep over `artifacts/colab/variant-yolov10e/detections/` (10 clips, detector-only,
+confidence 0.05, produced on an A100 — so nothing here is a CPU-inference result). New
+`panaf-phase1 track-sweep`; **0.30 s per arm** for 10 clips with `-j 8`, so this cost minutes.
+
+Ranked by a new metric, **identity coverage**: the share of an ape's frames held by its *single
+best* track. Plain coverage rewards chopping one ape into several tracks; counting switches alone
+rewards merging two apes into one. Identity coverage is pushed down by both.
+
+`track_purity` and `id_merges` were added first, deliberately, **before** any step that joins tracks
+together. Every other metric here improves when two apes are merged into a single track — the
+switches vanish, fragmentation reaches a perfect 1.00, coverage does not move. Without purity the
+numbers would have endorsed exactly that.
+
+**Result** — shipped settings vs `configs/tracking-candidate.yaml`, same 10 clips:
+
+| | shipped | candidate |
+| --- | --- | --- |
+| Identity coverage | 0.6449 | **0.7561** |
+| Coverage | 0.7284 | 0.7639 |
+| ID switches | 46 | **4** |
+| Fragmentation | 2.57 | **1.13** |
+| Track purity | 0.9963 | 0.9975 |
+| Tracks holding 2+ apes | 3 | 2 |
+| Jitter | 0.0230 | **0.0042** |
+| Mostly tracked | 13/23 | 16/23 |
+| Detection precision | 0.9530 | 0.9556 |
+| Detection recall | 0.7246 | 0.7639 |
+
+(46 rather than 36 switches is the same shipped settings re-tracked over the 0.05 cache instead of
+the 0.20 one — the substrate every arm here shares. The 0.20 baseline is 36.)
+
+**What actually mattered, in order**
+
+1. **Activation threshold 0.20 → 0.40**, the single largest effect. Because supervision needs
+   `activation + 0.1` to *start* a track, this means only a 0.50 detection opens a new identity
+   while anything down to the score floor can still extend one. Spurious track creation was the main
+   source of fragmentation.
+2. **Detect permissively, let the tracker filter.** Raw precision at 0.05 is 0.64 — but the
+   *tracked* output is 0.9556, better than the 0.9308 the 0.20 pipeline reports, at higher recall.
+   This inverts the assumption that the detector threshold should be tuned for precision.
+3. **Interpolation is what broke the coverage ceiling**, 0.7246 → 0.7639, for 195 synthesised boxes
+   and a precision cost of 0.0002. Every one is flagged `interpolated` so Phase 2 can exclude boxes
+   no detector saw.
+4. **Smoothing cut jitter by 82% and slightly *raised* both precision and recall** — steadier boxes
+   clear IoU 0.5 more often. I expected it to be cosmetic only.
+
+**Dead ends and corrections**
+
+- **Stitching turned out to be redundant.** Every `stitch_max_gap` from 0 to 96 gave byte-identical
+  results, which looked like a broken function. It is not: on the untuned baseline it cuts tracks
+  59 → 46 and fragmentation 2.57 → 2.00. It does nothing at the tuned operating point because
+  `lost_track_buffer: 120` already reconnects the same fragments, with a motion model inside the
+  tracker rather than a repair afterwards. Kept, defaulted off, and documented as a result.
+- **`detection_floor` does nothing**, 0.00 and 0.10 differing in the fourth decimal — because
+  supervision discards ≤0.10 itself. Axis dropped after one sweep.
+- **`minimum_consecutive_frames` looked like the answer early on** (switches 46 → 18 on its own,
+  from a parameter that was never passed to the library at all) and then stopped helping once
+  activation was raised. It costs coverage, and at activation 0.40 there is little flicker left for
+  it to remove. Ended at 1.
+- **My first smoothing implementation was wrong and a test caught it.** The window shrank
+  *asymmetrically* at the ends of a track, so a box moving at constant velocity came out at 5.0
+  where it should have been 0.0 — every track's first and last boxes dragged inward. Now symmetric.
+
+**Interpretation**
+
+Tracking is no longer the bottleneck; the detector is, again. Coverage 0.7639 against detection
+recall 0.8221 on this cache means association plus interpolation now recovers most of what the
+detector finds, and 4 switches across 23 individuals is close to the floor for this footage.
+
+**This is not adopted, and must not be.** Every number above was tuned *and* measured on the same
+10 clips, and those 10 were purposively chosen to be hard, so they are not a random sample either.
+`configs/tracking-candidate.yaml` records the settings and stays out of `base.yaml`.
+
+**Next action**
+Run `configs/colab-full500.yaml` — all 500 PanAf500 clips, detector-only at 0.05, ~100 minutes on
+an A100 by the 121 s/10 clips measured on 2026-07-27, plus ~1.1 GB of download. Then re-sweep on the
+dataset's own `train` split, confirm on `validation`, and touch `test` exactly once. Adopt only if
+it holds there, and report full-500 and hard-10 numbers separately so the easier clips do not
+flatter the result.
+
+PanAf20K cannot extend this: only the 500-clip subset carries per-frame `ape_id`, so identity
+metrics are undefined on the rest, not merely expensive.

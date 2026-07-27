@@ -61,6 +61,25 @@ tracking:
   # Tracks appearing in fewer frames than this are dropped after the clip is
   # tracked; a two-frame track is detector flicker, not an animal.
   minimum_track_length: 5
+  # Score at which a detection takes part fully in association. `null` follows
+  # model.confidence_threshold, which is what the pipeline did when this could
+  # not be set separately.
+  #
+  # Two upstream literals in supervision constrain what this can achieve, and
+  # neither is configurable: detections scoring <= 0.10 are discarded before
+  # either association pass, and a NEW track needs a detection scoring above
+  # activation + 0.10. So at 0.20 here, starting a track takes a 0.30 box.
+  activation_threshold: null
+  # Frames a track survives unmatched, expressed at 30 fps. supervision rescales
+  # it by the clip's rate -- `int(fps / 30 * buffer)` -- so at PanAf's 24 fps
+  # this is 24 frames, 1.0 s, not 30.
+  lost_track_buffer: 30
+  # IoU-distance threshold for association.
+  minimum_matching_threshold: 0.8
+  # Frames a new track must be seen in before it is reported. Unlike
+  # minimum_track_length this is applied online, so it suppresses flicker
+  # without needing the whole clip first.
+  minimum_consecutive_frames: 1
 
 video:
   output_fps: 24.0

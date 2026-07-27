@@ -11,20 +11,20 @@ import csv
 import json
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from panaf_ape_detection.config import Config
-from panaf_ape_detection.data.annotations import load_ground_truth
+from panaf_ape_detection.data.annotations import GroundTruthFrame, load_ground_truth
 from panaf_ape_detection.data.video import iter_frames, read_video_properties
 from panaf_ape_detection.evaluation.detection import ClipEvaluation, evaluate_clip
 from panaf_ape_detection.evaluation.tracking import ClipTrackEvaluation, evaluate_tracking
 from panaf_ape_detection.inference.filtering import filter_by_confidence, keep_animals
 from panaf_ape_detection.manifest import ManifestRow
 from panaf_ape_detection.provenance import build_run_metadata, file_sha256, write_run_metadata
-from panaf_ape_detection.reporting import TRACK_METRICS_SUBDIR
+from panaf_ape_detection.reporting import TRACK_METRICS_SUBDIR, detection_fields
 from panaf_ape_detection.types import (
     Detection,
     FrameDetections,
@@ -36,7 +36,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from panaf_ape_detection.inference.base import Detector
     from panaf_ape_detection.tracking.base import Tracker
 
-__all__ = ["ClipResult", "build_tracker", "load_manifest", "run_clip", "run_manifest"]
+__all__ = [
+    "ClipResult",
+    "build_tracker",
+    "evaluate_and_write",
+    "load_manifest",
+    "restore_frames",
+    "run_clip",
+    "run_manifest",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +164,14 @@ def build_tracker(
         from panaf_ape_detection.tracking.bytetrack import ByteTrackTracker
 
         return ByteTrackTracker(
-            confidence_threshold=config.model.confidence_threshold,
+            activation_threshold=config.tracking.resolved_activation_threshold(
+                config.model.confidence_threshold
+            ),
             frame_rate=frame_rate or 24.0,
+            lost_track_buffer=config.tracking.lost_track_buffer,
+            minimum_matching_threshold=config.tracking.minimum_matching_threshold,
+            minimum_consecutive_frames=config.tracking.minimum_consecutive_frames,
+            score_floor=config.tracking.score_floor,
             frame_width=frame_width,
             frame_height=frame_height,
         )
@@ -167,6 +181,99 @@ def build_tracker(
         "Use 'bytetrack', or set tracking.enabled to false."
     )
     raise ValueError(msg)
+
+
+def restore_frames(
+    document: Mapping[str, Any],
+) -> tuple[dict[int, list[Detection]], dict[int, list[TrackedDetection]]]:
+    """Rebuild a clip's per-frame detections from a saved detections document.
+
+    Returns both shapes because they answer different questions: detection
+    metrics want plain boxes, track metrics need the ids. When the document was
+    written with tracking off the tracked mapping is empty, which is what
+    :func:`evaluate_tracking` should be given rather than a mapping of empty
+    lists -- the latter would read as "tracked, found nothing".
+
+    Args:
+        document: A parsed ``artifacts/detections/<clip>.json``.
+
+    Returns:
+        ``(per_frame, tracked_frames)``, both keyed by zero-based frame index.
+    """
+    tracked_enabled = bool(document.get("tracking", {}).get("enabled"))
+
+    per_frame: dict[int, list[Detection]] = {}
+    tracked_frames: dict[int, list[TrackedDetection]] = {}
+    for frame in document.get("frames", []):
+        index = int(frame["frame_index"])
+        records = frame.get("detections", [])
+        per_frame[index] = [Detection(**detection_fields(record)) for record in records]
+        if tracked_enabled:
+            tracked_frames[index] = [
+                TrackedDetection(
+                    **detection_fields(record),
+                    track_id=int(record["track_id"]),
+                    behavior_label=record.get("behavior_label"),
+                )
+                for record in records
+                if record.get("track_id") is not None
+            ]
+    return per_frame, tracked_frames
+
+
+def evaluate_and_write(
+    clip_id: str,
+    per_frame: Mapping[int, Sequence[Detection]],
+    tracked_frames: Mapping[int, Sequence[TrackedDetection]],
+    ground_truth: Mapping[int, GroundTruthFrame],
+    *,
+    artifacts: Path,
+    confidence_threshold: float,
+    model_variant: str,
+) -> tuple[ClipEvaluation | None, ClipTrackEvaluation | None]:
+    """Measure a clip against ground truth and write both metrics files.
+
+    Shared by a fresh run and a resumed one so the two cannot produce different
+    numbers from the same detections.
+
+    Args:
+        clip_id: Manifest identifier.
+        per_frame: Predicted detections per frame.
+        tracked_frames: Predicted tracks per frame; empty when tracking was off.
+        ground_truth: Annotations per frame; empty when the clip has none.
+        artifacts: Root artifacts directory.
+        confidence_threshold: Threshold the detections were produced at.
+        model_variant: Detector variant that produced them.
+
+    Returns:
+        ``(detection evaluation, track evaluation)``, either of which is ``None``
+        when it could not be computed.
+    """
+    if not ground_truth:
+        return None, None
+
+    track_evaluation = None
+    if tracked_frames:
+        track_evaluation = evaluate_tracking(clip_id, tracked_frames, ground_truth)
+        # Its own directory, so a glob of metrics/ returns one schema only.
+        track_metrics_path = artifacts / "metrics" / TRACK_METRICS_SUBDIR / f"{clip_id}.json"
+        track_metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        track_metrics_path.write_text(
+            json.dumps(track_evaluation.as_dict(), indent=2) + "\n", encoding="utf-8"
+        )
+
+    evaluation = evaluate_clip(
+        clip_id,
+        per_frame,
+        ground_truth,
+        confidence_threshold=confidence_threshold,
+        model_variant=model_variant,
+    )
+    metrics_path = artifacts / "metrics" / f"{clip_id}.json"
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(json.dumps(evaluation.as_dict(), indent=2) + "\n", encoding="utf-8")
+
+    return evaluation, track_evaluation
 
 
 def run_clip(
@@ -204,18 +311,6 @@ def run_clip(
     detections_path = artifacts / "detections" / f"{row.clip_id}.json"
     annotated_path = artifacts / "videos" / f"{row.clip_id}_annotated.mp4"
 
-    if not overwrite and detections_path.is_file() and annotated_path.is_file():
-        logger.info("%s: outputs already present, skipping", row.clip_id)
-        stored = json.loads(detections_path.read_text(encoding="utf-8"))
-        return ClipResult(
-            clip_id=row.clip_id,
-            frames_processed=len(stored.get("frames", [])),
-            detections_kept=sum(len(f["detections"]) for f in stored.get("frames", [])),
-            evaluation=None,
-            detections_path=detections_path,
-            video_path=annotated_path,
-        )
-
     ground_truth = {}
     if row.annotation_filename:
         annotation_path = raw_root / "annotations" / row.annotation_filename
@@ -226,6 +321,40 @@ def run_clip(
                 frame_height=properties.height,
                 clip_id=row.clip_id,
             )
+
+    video_expected = config.video.write_annotated
+    if (
+        not overwrite
+        and detections_path.is_file()
+        and (annotated_path.is_file() or not video_expected)
+    ):
+        # Skipping inference is not the same as skipping measurement. Returning
+        # no evaluation here meant a run resumed after a dropped Colab session
+        # reported nothing for every clip it had already done -- the failure mode
+        # a 500-clip run is most likely to hit. Metrics are recomputed from the
+        # saved detections, which costs no GPU and no video decode.
+        logger.info("%s: detections already present, re-measuring without inference", row.clip_id)
+        stored = json.loads(detections_path.read_text(encoding="utf-8"))
+        restored, restored_tracks = restore_frames(stored)
+        evaluation, track_evaluation = evaluate_and_write(
+            row.clip_id,
+            restored,
+            restored_tracks,
+            ground_truth,
+            artifacts=artifacts,
+            confidence_threshold=float(stored["model"]["confidence_threshold"]),
+            model_variant=str(stored["model"].get("variant", "")),
+        )
+        return ClipResult(
+            clip_id=row.clip_id,
+            frames_processed=len(restored),
+            detections_kept=sum(len(d) for d in restored.values()),
+            evaluation=evaluation,
+            track_evaluation=track_evaluation,
+            detections_path=detections_path,
+            video_path=annotated_path,
+            elapsed_seconds=time.perf_counter() - started,
+        )
 
     tracker = build_tracker(
         config,
@@ -287,30 +416,32 @@ def run_clip(
 
     # Pass 2: decode again and draw the finalised results. Decoding costs a few
     # milliseconds a frame against ~200 ms of inference, so this is far cheaper
-    # than holding 360 uncompressed frames in memory.
-    with VideoWriter(
-        annotated_path,
-        width=properties.width,
-        height=properties.height,
-        fps=config.video.output_fps,
-        codec=config.video.codec,
-    ) as writer:
-        for frame_index, frame in iter_frames(
-            video_path, frame_stride=config.data.frame_stride, limit=limit_frames
-        ):
-            truth_frame = ground_truth.get(frame_index)
-            writer.write(
-                draw_frame(
-                    frame,
-                    detections=per_frame.get(frame_index, []),
-                    ground_truth=truth_frame.detections if truth_frame else (),
-                    frame_index=frame_index,
-                    clip_id=row.clip_id,
-                    draw_confidence=config.video.draw_confidence,
-                    draw_behaviour=config.video.draw_behavior_label,
-                    draw_track_id=config.video.draw_track_id,
+    # than holding 360 uncompressed frames in memory. Skipped entirely when no
+    # video is wanted -- it is a whole extra decode of every clip.
+    if config.video.write_annotated:
+        with VideoWriter(
+            annotated_path,
+            width=properties.width,
+            height=properties.height,
+            fps=config.video.output_fps,
+            codec=config.video.codec,
+        ) as writer:
+            for frame_index, frame in iter_frames(
+                video_path, frame_stride=config.data.frame_stride, limit=limit_frames
+            ):
+                truth_frame = ground_truth.get(frame_index)
+                writer.write(
+                    draw_frame(
+                        frame,
+                        detections=per_frame.get(frame_index, []),
+                        ground_truth=truth_frame.detections if truth_frame else (),
+                        frame_index=frame_index,
+                        clip_id=row.clip_id,
+                        draw_confidence=config.video.draw_confidence,
+                        draw_behaviour=config.video.draw_behavior_label,
+                        draw_track_id=config.video.draw_track_id,
+                    )
                 )
-            )
 
     detections_path.parent.mkdir(parents=True, exist_ok=True)
     detections_path.write_text(
@@ -342,28 +473,15 @@ def run_clip(
         encoding="utf-8",
     )
 
-    track_evaluation = None
-    if ground_truth and tracker is not None:
-        track_evaluation = evaluate_tracking(row.clip_id, tracked_frames, ground_truth)
-        # Its own directory, so a glob of metrics/ returns one schema only.
-        track_metrics_path = artifacts / "metrics" / TRACK_METRICS_SUBDIR / f"{row.clip_id}.json"
-        track_metrics_path.parent.mkdir(parents=True, exist_ok=True)
-        track_metrics_path.write_text(
-            json.dumps(track_evaluation.as_dict(), indent=2) + "\n", encoding="utf-8"
-        )
-
-    evaluation = None
-    if ground_truth:
-        evaluation = evaluate_clip(
-            row.clip_id,
-            per_frame,
-            ground_truth,
-            confidence_threshold=config.model.confidence_threshold,
-            model_variant=detector.variant,
-        )
-        metrics_path = artifacts / "metrics" / f"{row.clip_id}.json"
-        metrics_path.parent.mkdir(parents=True, exist_ok=True)
-        metrics_path.write_text(json.dumps(evaluation.as_dict(), indent=2) + "\n", encoding="utf-8")
+    evaluation, track_evaluation = evaluate_and_write(
+        row.clip_id,
+        per_frame,
+        tracked_frames if tracker is not None else {},
+        ground_truth,
+        artifacts=artifacts,
+        confidence_threshold=config.model.confidence_threshold,
+        model_variant=detector.variant,
+    )
 
     return ClipResult(
         clip_id=row.clip_id,
@@ -372,7 +490,7 @@ def run_clip(
         evaluation=evaluation,
         track_evaluation=track_evaluation,
         detections_path=detections_path,
-        video_path=annotated_path,
+        video_path=annotated_path if config.video.write_annotated else None,
         elapsed_seconds=time.perf_counter() - started,
     )
 

@@ -97,9 +97,23 @@ def artifacts_tree(tmp_path: Path) -> Path:
                 "total_id_switches": 2,
                 "mean_fragmentation": 1.33,
                 "mean_coverage": 0.42,
+                "mean_identity_coverage": 0.36,
+                "mean_track_purity": 0.95,
+                "id_merges": 1,
+                "mean_jitter": 0.02,
                 "mostly_tracked": 1,
                 "mostly_lost": 1,
-                "individuals": [],
+                "individuals": [
+                    {
+                        "ape_id": 0,
+                        "annotated_frames": 100,
+                        "covered_frames": 42,
+                        "coverage": 0.42,
+                        "identity_coverage": 0.36,
+                        "id_switches": 2,
+                        "fragmentation": 2,
+                    }
+                ],
             },
         )
         _write(

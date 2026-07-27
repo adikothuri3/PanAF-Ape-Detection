@@ -55,6 +55,7 @@ def test_only_implemented_commands_are_registered():
         "detect",
         "evaluate",
         "track",
+        "track-sweep",
     }
 
 
@@ -214,11 +215,17 @@ def _saved_run(
     confidence: float = 0.2,
     scores: list[float] | None = None,
     tracking: bool = False,
+    stored_track_ids: bool = False,
 ) -> Path:
     """Lay out a miniature repository: manifest, annotations, saved detections.
 
     One clip, three frames, one annotated ape holding still, and one detection
     per frame at *scores*.
+
+    *stored_track_ids* writes the ``track_id`` and ``behavior_label`` keys that a
+    real run with tracking enabled produces. It defaults to false only because
+    that was the original behaviour; leaving it the *only* behaviour is what let
+    ``evaluate`` ship broken against the repository's own artifacts.
     """
     import json
 
@@ -263,6 +270,11 @@ def _saved_run(
             {
                 "clip_id": "clip-a",
                 "model": {"name": "MegaDetectorV6", "confidence_threshold": confidence},
+                "tracking": {
+                    "enabled": stored_track_ids,
+                    "backend": "bytetrack" if stored_track_ids else None,
+                    "minimum_track_length": 1,
+                },
                 "video": {"width": 720, "height": 404, "fps": 24.0, "frame_count": 3},
                 "frames": [
                     {
@@ -281,6 +293,11 @@ def _saved_run(
                                 "confidence": score,
                                 "category_id": 0,
                                 "category_name": "animal",
+                                **(
+                                    {"track_id": 1, "behavior_label": None}
+                                    if stored_track_ids
+                                    else {}
+                                ),
                             }
                         ],
                     }
@@ -317,6 +334,31 @@ def test_evaluate_reads_saved_detections(
     output = unwrap(result.output)
     assert "clip-a" in output
     # Three frames, one true positive each, nothing else.
+    assert "precision 1.0" in output
+    assert "recall 1.0" in output
+
+
+def test_evaluate_reads_detections_saved_with_tracking_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """A tracked detections document must not crash the detection evaluator.
+
+    Regression: `Detection` is ``extra="forbid"`` and records written with
+    tracking on carry ``track_id`` and ``behavior_label``, so ``Detection(**d)``
+    raised ``ValidationError`` for every clip. Every fixture until now was
+    written with tracking off, so the whole suite passed while the command was
+    unusable against the repository's own default artifacts.
+    """
+    config = _saved_run(tmp_path, config_data, write_config, stored_track_ids=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    result = invoke("evaluate", "--config", str(config))
+
+    assert result.exit_code == 0, result.output
+    output = unwrap(result.output)
     assert "precision 1.0" in output
     assert "recall 1.0" in output
 
@@ -414,3 +456,98 @@ def test_track_measures_saved_detections_and_writes_metrics(
     assert metrics["schema"] == TRACKING_METRICS_SCHEMA
     # Nothing but detection metrics in metrics/ itself.
     assert list((tmp_path / "artifacts" / "metrics").glob("*.json")) == []
+
+
+def test_track_can_read_and_write_outside_the_configured_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """An experiment must not overwrite the baseline it is being compared against."""
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import json
+    import shutil
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    elsewhere = tmp_path / "elsewhere"
+    shutil.copytree(tmp_path / "artifacts" / "detections", elsewhere / "detections")
+    output = tmp_path / "experiment"
+
+    result = invoke(
+        "track",
+        "--config",
+        str(config),
+        "--detections-dir",
+        str(elsewhere / "detections"),
+        "--metrics-dir",
+        str(output),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (output / "metrics" / "tracking" / "clip-a.json").is_file()
+    # The configured artifacts tree is untouched.
+    assert not (tmp_path / "artifacts" / "metrics").exists()
+
+    written = json.loads((output / "metrics" / "tracking" / "clip-a.json").read_text())
+    # Every setting is recorded beside the result, so a file is self-describing.
+    assert written["activation_threshold"] == config_data["model"]["confidence_threshold"]
+    assert written["lost_track_buffer"] == 30
+
+
+def test_track_sweep_ranks_arms_and_writes_one_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import json
+
+    from panaf_ape_detection.pipeline.retrack import TRACKING_SWEEP_SCHEMA
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    grid = tmp_path / "grid.yaml"
+    grid.write_text(
+        "name: unit-sweep\naxes:\n  lost_track_buffer: [30, 60]\n  minimum_track_length: [1]\n",
+        encoding="utf-8",
+    )
+
+    result = invoke("track-sweep", "--grid", str(grid), "--config", str(config))
+
+    assert result.exit_code == 0, result.output
+    written = tmp_path / "artifacts" / "metrics" / "tracking-sweep" / "unit-sweep.json"
+    record = json.loads(written.read_text(encoding="utf-8"))
+
+    # Its own directory and its own schema: neither detection metrics nor
+    # per-clip track metrics, so it must not share a directory with either.
+    assert record["schema"] == TRACKING_SWEEP_SCHEMA
+    assert len(record["arms"]) == 2
+    assert record["clips"] == ["clip-a"]
+    assert all("pooled" in arm and "settings" in arm for arm in record["arms"])
+    # Ranked best-first by the metric the command says it ranks by.
+    scores = [arm["pooled"]["identity_coverage"] for arm in record["arms"]]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_track_sweep_rejects_an_unknown_axis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """A typo would otherwise sweep one arm and read as "no setting helps"."""
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    grid = tmp_path / "grid.yaml"
+    grid.write_text("name: typo\naxes:\n  lost_frame_buffer: [30]\n", encoding="utf-8")
+
+    result = invoke("track-sweep", "--grid", str(grid), "--config", str(config))
+
+    assert result.exit_code == 1
+    assert "unknown tracker setting" in unwrap(result.output)

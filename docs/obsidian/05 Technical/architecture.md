@@ -196,3 +196,30 @@ behind an existing protocol, the protocol is wrong and should be changed deliber
   download weights.** A real-weights test, if ever added, is marked and excluded from default CI.
 - `tracking/`, `visualization/`: tested on synthetic `Detection` sequences with known answers.
 - `pipeline/`: one end-to-end test with a stub detector and a two-frame synthetic clip.
+
+## Tracking module layout
+
+`tracking/` gained two modules during the tracking work, both obeying the rule that stage modules
+import nothing from each other:
+
+- `tracking/refine.py` — pure functions over `{frame_index: tracked detections}`: `stitch_tracks`,
+  `interpolate_gaps`, `smooth_tracks`, and `refine` which applies them in the one sound order. No
+  video, no detector, no ground truth.
+- `pipeline/retrack.py` — offline re-tracking and sweeping over `artifacts/detections/`. It lives in
+  `pipeline/` rather than `tracking/` because it spans stages (tracking **and** evaluation), and
+  only `pipeline/` is allowed to know the stage order.
+
+`panaf-phase1 track-sweep` writes a **third** artifact shape, so it gets a third directory rather
+than a fourth filename convention: `artifacts/metrics/tracking-sweep/<name>.json`, schema
+`panaf.tracking-sweep/v1`. One file per sweep, holding many arms — neither detection metrics nor
+per-clip track metrics.
+
+`TrackedDetection` carries an `interpolated` flag. Boxes synthesised to bridge a detector gap are
+predictions, not measurements, and anything consuming tracks downstream — Phase 2 pose above all —
+must be able to tell them apart. See [[tracking]].
+
+## Related
+
+- [[tracking]] — what the tracking stage measures, and what constrains it
+- [[model]] — the detector behind `inference/`
+- [[dataset]] — what the annotations contain

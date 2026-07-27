@@ -34,12 +34,15 @@ __all__ = [
     "TRACKING_METRICS_SCHEMA",
     "TRACK_METRICS_SUBDIR",
     "PooledCounts",
+    "PooledTrackCounts",
     "ScoreBands",
+    "detection_fields",
     "format_recall_table",
     "latest_run_metadata",
     "load_detection_metrics",
     "load_track_metrics",
     "pooled_counts",
+    "pooled_track_metrics",
     "recall_by_behaviour",
     "recall_by_size",
     "score_bands",
@@ -58,6 +61,9 @@ _LEGACY_TRACK_SUFFIX = "_tracking.json"
 # Recorded per detection, so a band can be read against a tracker's floor.
 _LOW_BAND = 0.10
 _MID_BAND = 0.15
+
+# Everything a plain `Detection` accepts, and nothing a tracked one adds.
+_DETECTION_FIELDS = ("box", "confidence", "category_id", "category_name")
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +123,79 @@ class PooledCounts:
 
 
 @dataclass(frozen=True, slots=True)
+class PooledTrackCounts:
+    """Track quality summed over clips, with the rates derived from them.
+
+    Coverage is pooled over *annotated frames*, not averaged over clips, for the
+    same reason detection counts are: a 4-ape clip and a 1-ape clip must not
+    carry equal weight. The per-clip files report per-clip means; this reports
+    the dataset.
+
+    Attributes:
+        clips: Clips contributing.
+        individuals: Annotated apes over those clips.
+        predicted_tracks: Distinct tracks produced.
+        id_switches: Times a followed ape's track id changed.
+        id_merges: Tracks matched to more than one ape.
+        annotated_frames: Ape-frames that could have been covered.
+        covered_frames: Ape-frames some track covered.
+        dominant_track_frames: Ape-frames the ape's single best track covered.
+        mostly_tracked: Apes covered in at least 80% of their frames.
+        mostly_lost: Apes covered in at most 20%.
+        purity_sum: Track purities summed, for the mean.
+        purity_count: Tracks contributing a purity.
+        jitter_sum: Per-clip jitter summed, for the mean.
+        jitter_count: Clips contributing a jitter.
+    """
+
+    clips: int = 0
+    individuals: int = 0
+    predicted_tracks: int = 0
+    id_switches: int = 0
+    id_merges: int = 0
+    annotated_frames: int = 0
+    covered_frames: int = 0
+    dominant_track_frames: int = 0
+    mostly_tracked: int = 0
+    mostly_lost: int = 0
+    purity_sum: float = 0.0
+    purity_count: int = 0
+    jitter_sum: float = 0.0
+    jitter_count: int = 0
+
+    @property
+    def coverage(self) -> float:
+        """Fraction of annotated ape-frames any track covered."""
+        return self.covered_frames / self.annotated_frames if self.annotated_frames else 0.0
+
+    @property
+    def identity_coverage(self) -> float:
+        """Fraction of annotated ape-frames each ape's *best single* track held.
+
+        The headline number for comparing tracker settings: it falls both when
+        an ape is lost and when it is split across tracks.
+        """
+        if not self.annotated_frames:
+            return 0.0
+        return self.dominant_track_frames / self.annotated_frames
+
+    @property
+    def fragmentation(self) -> float:
+        """Predicted tracks per annotated individual. ``1.0`` is ideal."""
+        return self.predicted_tracks / self.individuals if self.individuals else 0.0
+
+    @property
+    def track_purity(self) -> float:
+        """Mean share of a track's matched frames belonging to one ape."""
+        return self.purity_sum / self.purity_count if self.purity_count else 1.0
+
+    @property
+    def jitter(self) -> float:
+        """Mean normalised box acceleration over clips."""
+        return self.jitter_sum / self.jitter_count if self.jitter_count else 0.0
+
+
+@dataclass(frozen=True, slots=True)
 class ScoreBands:
     """Detection scores bucketed against a tracker's usable range.
 
@@ -147,6 +226,32 @@ class ScoreBands:
 
 def _metrics_dir(artifacts_dir: Path | str) -> Path:
     return Path(artifacts_dir) / "metrics"
+
+
+def detection_fields(record: Mapping[str, object]) -> dict[str, object]:
+    """Return only the fields a plain ``Detection`` accepts, from a saved record.
+
+    Records in ``artifacts/detections/`` carry ``track_id`` and
+    ``behavior_label`` whenever tracking ran. ``Detection`` is
+    ``extra="forbid"``, so splatting such a record into it raises
+    ``ValidationError`` -- which is exactly how ``panaf-phase1 evaluate`` came to
+    crash on the repository's own default artifacts while its unit tests, whose
+    fixtures were written with tracking off, kept passing.
+
+    Reading a saved record therefore goes through here rather than through
+    ``Detection(**record)`` at each call site.
+
+    Args:
+        record: One entry from a frame's ``detections`` list.
+
+    Returns:
+        A new dict holding only ``box``, ``confidence``, ``category_id`` and
+        ``category_name``. Track fields are dropped, not merely ignored.
+
+    Raises:
+        KeyError: If the record is missing a field every detection must have.
+    """
+    return {field: record[field] for field in _DETECTION_FIELDS}
 
 
 def load_detection_metrics(artifacts_dir: Path | str) -> list[dict[str, object]]:
@@ -210,6 +315,87 @@ def load_track_metrics(artifacts_dir: Path | str) -> list[dict[str, object]]:
 
     loaded = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     return sorted(loaded, key=lambda d: str(d.get("clip_id", "")))
+
+
+def _as_int(value: object) -> int:
+    """Coerce a JSON value to int, treating absent and null as zero."""
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _as_float(value: object) -> float:
+    """Coerce a JSON value to float, treating absent and null as zero."""
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _as_records(value: object) -> list[Mapping[str, object]]:
+    """Return *value* as a list of mappings, or empty if it is neither."""
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def pooled_track_metrics(metrics: Iterable[Mapping[str, object]]) -> PooledTrackCounts:
+    """Sum track metrics over clips into one comparable summary.
+
+    Takes what :func:`load_track_metrics` returns. Tolerates records written
+    before the identity fields existed: an older file simply contributes nothing
+    to purity and jitter rather than being read as purity zero.
+
+    Args:
+        metrics: Per-clip track metric documents.
+
+    Returns:
+        The pooled counts.
+    """
+    clips = individuals = predicted_tracks = id_switches = id_merges = 0
+    annotated_frames = covered_frames = dominant_track_frames = 0
+    mostly_tracked = mostly_lost = 0
+    purity_sum = jitter_sum = 0.0
+    purity_count = jitter_count = 0
+
+    for document in metrics:
+        clips += 1
+        predicted_tracks += _as_int(document.get("predicted_tracks"))
+        id_switches += _as_int(document.get("total_id_switches"))
+        id_merges += _as_int(document.get("id_merges"))
+        mostly_tracked += _as_int(document.get("mostly_tracked"))
+        mostly_lost += _as_int(document.get("mostly_lost"))
+
+        if "mean_track_purity" in document:
+            purity_sum += _as_float(document["mean_track_purity"])
+            purity_count += 1
+        if "mean_jitter" in document:
+            jitter_sum += _as_float(document["mean_jitter"])
+            jitter_count += 1
+
+        for individual in _as_records(document.get("individuals")):
+            individuals += 1
+            annotated = _as_int(individual.get("annotated_frames"))
+            annotated_frames += annotated
+            covered_frames += _as_int(individual.get("covered_frames"))
+            # Older records carry no identity_coverage. Falling back to
+            # `covered` would credit them with perfect identity they were never
+            # measured for, so they contribute nothing instead.
+            share = individual.get("identity_coverage")
+            if share is not None:
+                dominant_track_frames += round(_as_float(share) * annotated)
+
+    return PooledTrackCounts(
+        clips=clips,
+        individuals=individuals,
+        predicted_tracks=predicted_tracks,
+        id_switches=id_switches,
+        id_merges=id_merges,
+        annotated_frames=annotated_frames,
+        covered_frames=covered_frames,
+        dominant_track_frames=dominant_track_frames,
+        mostly_tracked=mostly_tracked,
+        mostly_lost=mostly_lost,
+        purity_sum=purity_sum,
+        purity_count=purity_count,
+        jitter_sum=jitter_sum,
+        jitter_count=jitter_count,
+    )
 
 
 def variants_in(metrics: Iterable[Mapping[str, object]]) -> set[str]:

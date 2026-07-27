@@ -85,11 +85,16 @@ REQUIRED_FILES: tuple[str, ...] = (
     "src/panaf_ape_detection/visualization/overlays.py",
     "src/panaf_ape_detection/visualization/video.py",
     "src/panaf_ape_detection/pipeline/runner.py",
+    "src/panaf_ape_detection/pipeline/retrack.py",
     "src/panaf_ape_detection/tracking/base.py",
     "src/panaf_ape_detection/tracking/bytetrack.py",
     "src/panaf_ape_detection/tracking/convert.py",
+    "src/panaf_ape_detection/tracking/refine.py",
     "tests/test_annotations.py",
     "tests/test_evaluation.py",
+    "tests/test_pipeline_runner.py",
+    "tests/test_refine.py",
+    "tests/test_retrack.py",
     "tests/test_tracking.py",
     "tests/test_video_and_overlays.py",
     "scripts/smoke_detect.py",
@@ -188,7 +193,16 @@ MAX_TRACKED_FILE_BYTES = 1_000_000
 # Commands the CLI is allowed to expose. A command may only be registered in the
 # same change that implements and tests it -- this list is the gate.
 EXPECTED_CLI_COMMANDS: frozenset[str] = frozenset(
-    {"doctor", "validate-config", "show-paths", "fetch-clips", "detect", "evaluate", "track"}
+    {
+        "doctor",
+        "validate-config",
+        "show-paths",
+        "fetch-clips",
+        "detect",
+        "evaluate",
+        "track",
+        "track-sweep",
+    }
 )
 
 _failures: list[str] = []

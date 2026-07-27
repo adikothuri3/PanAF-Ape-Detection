@@ -165,8 +165,10 @@ in `reporting.py` where it is typed and tested; a notebook cell should be a thin
 ### Do not stub CLI commands
 
 Unimplemented pipeline commands are **absent**, not registered-and-raising. `make verify` fails if
-the CLI exposes anything outside `{doctor, validate-config, show-paths}`. Register a command in the
-same change that implements and tests it, updating the allowlist then.
+the CLI exposes anything outside `EXPECTED_CLI_COMMANDS` in `scripts/verify_repository.py` — the
+allowlist is the gate, and this file must not restate it. Register a command in the same change
+that implements and tests it, updating both the allowlist and
+`tests/test_cli.py::test_only_implemented_commands_are_registered`.
 
 ### Do not download data or weights during development
 

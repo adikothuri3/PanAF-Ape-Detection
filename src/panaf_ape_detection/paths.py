@@ -68,6 +68,10 @@ ARTIFACT_SUBDIRECTORIES: tuple[str, ...] = (
     # their own directory rather than a filename suffix -- a suffix only works
     # if every reader remembers to filter, and one did not.
     "metrics/tracking",
+    # A third shape: one file per *sweep*, holding many arms, each with its own
+    # settings and per-clip results. Same rule, applied again rather than
+    # squeezed into the directory above.
+    "metrics/tracking-sweep",
     "videos",
     "visualizations",
 )
