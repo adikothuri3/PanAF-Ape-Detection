@@ -59,38 +59,34 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
 
 ## Current Active Task
 
-**Variant comparison: `MDV6-yolov10-e` against the `MDV6-yolov9-c` baseline.** Config-only, on
-Colab: `configs/colab-variant-yolov10e.yaml` against `configs/colab-sweep-conf005.yaml`, both
-detector-only at confidence 0.05 so they compare at every threshold. Section 10 of
-[the notebook](../../../notebooks/phase1_colab.ipynb) runs both arms and prints the comparison.
+**None — the variant comparison is done, and it settled the open question.**
 
-**The number that decides it** is not recall but the score distribution: what fraction of detections
-clears ByteTrack's hardcoded 0.1 floor. A variant that only finds fainter boxes changes nothing
-downstream.
+`MDV6-yolov10-e` nearly doubles recall at unchanged precision, for one line of config and 22 seconds
+of extra compute on the whole sample. Plain-English write-up:
+[variant comparison](../../../reports/variant_comparison_2026-07-27.md).
 
-Phase 1 steps 1-6 closed on 2026-07-26 with the full 10-clip run, tracking, and the findings
-write-up. This is a Beyond-Phase-1 cheap experiment, not a seventh step.
+The decision to make: adopt it as the default variant (recommended — see below).
 
 ## Next Recommended Task
 
-**The threshold sweep is done and it changed the plan. In this order:**
+**Adopt the better model, then attack tracking — detection is no longer the bottleneck.**
 
-1. **Extend the sweep below 0.05.** F1 was still rising at the bottom of the swept range, so the
-   optimum has not been found. One re-run at 0.01 plus a free `evaluate --confidence` sweep.
-2. **Decide the operating point, then change `configs/base.yaml`.** 0.05 is measured as better than
-   0.20 on F1 *for the detector*. It is worth **nothing** once tracking is applied: `sv.ByteTrack`
-   discards anything scoring ≤ 0.1 and needs `activation + 0.1` to start a track, and 87% of the
-   recovered detections in the hardest clip fall below that floor. Tracking at 0.05 gives identical
-   coverage to 0.20 with more ID switches. So the decision is really *which output is the product* —
-   and if it is tracks, the question is whether ByteTrack is the right tracker for footage whose hard
-   cases score 0.05-0.10.
-3. **Variant comparison — now the active task, see above.** `MDV6-yolov10-e` is larger and
-   higher-resolution. Config-only change; roughly 15 min on an A100.
+1. **Switch `configs/base.yaml` and `colab.yaml` to `MDV6-yolov10-e`**, keeping the 0.20 threshold,
+   which is now the *right* threshold: the new model peaks there and degrades gently either side.
+   Then re-run all 10 clips once, so the annotated videos and headline numbers come from the model
+   we actually recommend.
+2. **Tracking is now the limit.** Coverage doubled to 0.728, but ID switches went 19 → 46 — more
+   apes on screen means more chances to confuse two of them. Free things to try first, all over
+   saved detections with `panaf-phase1 track`: ByteTrack activation at 0.20 rather than 0.05
+   (already measured as better on every axis) and a lower `minimum_track_length`.
+3. **Only then consider fine-tuning.** The case is much weaker than it looked: the gap was
+   **capacity, not domain mismatch**, and a config change closed most of it. See
+   [the write-up](../../../reports/variant_comparison_2026-07-27.md) for what fine-tuning would and
+   would not fix.
 
-Contrast preprocessing has dropped down the list: §8 shows the model already responds to those
-subjects, just weakly, so equalisation would be lifting scores rather than creating detections.
-
-Fine-tuning stays last, and the case for it is now weaker than it looked this morning.
+The threshold question is closed. `yolov9-c`'s F1 rose all the way down to 0.05, so its optimum was
+never found; `yolov10-e` peaks at the shipped default. The mistuned operating point was a symptom of
+the smaller model, not a property of the footage.
 
 ## Reading Progress
 

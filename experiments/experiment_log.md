@@ -794,3 +794,98 @@ this one I built on top of, by assuming a configurable threshold was the only th
 Extend the sweep below 0.05 for the detector-only case. For tracking, the question is no longer the
 detector threshold but whether ByteTrack's 0.1 floor makes it the wrong tracker for footage whose
 hard cases score at 0.05-0.10. Then the variant comparison.
+
+---
+
+## 2026-07-27 — Variant comparison: `MDV6-yolov10-e` nearly doubles recall for free
+
+**Objective**
+Answer the last cheap question before any fine-tuning: is the detection gap a capacity limit, or
+domain mismatch? Run the larger variant over the identical sample and compare.
+
+**Hypothesis / question**
+Written down before the run: the deciding number is not recall but the **score distribution** —
+whether the larger model scores the low-contrast subjects *above* ByteTrack's 0.15 floor. A variant
+that only finds fainter boxes changes nothing downstream.
+
+**Environment**
+Colab A100, `cuda` (verified), both arms in one session. yolov9-c 99 s, yolov10-e 121 s for
+10 clips / 3600 frames.
+
+**Commands run**
+```bash
+# both arms, detector-only at 0.05 so they compare at every threshold
+panaf-phase1 detect -c configs/colab-sweep-conf005.yaml --overwrite
+panaf-phase1 detect -c configs/colab-variant-yolov10e.yaml --overwrite
+# then, locally, over the saved detections
+panaf-phase1 evaluate -c <arm> --confidence 0.05|0.10|0.20|0.30|0.40|0.50
+panaf-phase1 track -c <arm>
+```
+
+**Results — at the same 0.20 operating point**
+
+| | yolov9-c | yolov10-e |
+|---|---|---|
+| Precision | 0.8743 | 0.8621 |
+| Recall | 0.3864 | **0.7446** |
+| F1 | 0.5359 | **0.7991** |
+
+Recall nearly doubles at **unchanged precision**. At 0.05: P 0.6337 → 0.6419, R 0.5639 → 0.8221.
+
+**The predicted deciding number came out decisively.** Detections clearing 0.15: **54% → 73%**.
+
+By behaviour (both at 0.05): `sitting` 0.326 → 1.000, `climbing_up` 0.180 → 0.700,
+`sitting_on_back` 0.104 → 0.364, `hanging` 0.531 → 0.737, `standing` 0.670 → 0.943. Every class
+improves. By size: small 0.441 → 0.710, medium 0.693 → 0.945, large 0.600 → 0.850 — a uniform
+~+0.25, so this is not a large-subject effect.
+
+**Tracking, measured rather than inferred**
+
+| | yolov9-c | yolov10-e (activation 0.20) |
+|---|---|---|
+| Coverage of annotated individual-frames | 0.351 | **0.728** |
+| Mostly tracked / 23 | 6 | **13** |
+| Mostly lost / 23 | 9 | **2** |
+| Predicted tracks | 30 | 59 |
+| ID switches | 19 | 46 |
+
+Coverage doubles; identity stability worsens. Both are consequences of having more detections, and
+the honest reading is that the bottleneck has moved from detection to association.
+
+Running ByteTrack with activation 0.20 rather than 0.05 is better on every axis (coverage 0.728 vs
+0.718, switches 46 vs 54, mostly-lost 2 vs 3): faint boxes should *extend* tracks, not start them,
+which is what ByteTrack was designed for.
+
+**The threshold problem largely dissolved.** yolov9-c's F1 rose monotonically as the threshold fell,
+so the optimum was never found. yolov10-e peaks at **0.20–0.30**, the shipped default, and degrades
+gently either side.
+
+**Checks before believing any of it**
+
+- Three clips report recall 1.000, which is the kind of number that is usually an artifact. Checked
+  detections per frame: `RHH9DDfWZa` 417 detections for 325 annotated boxes at 1.16/frame on a
+  one-ape clip, precision 0.779. Not box flooding — the recall is real.
+- The A100 baseline agrees with the earlier local MPS baseline: P 0.6337 vs 0.6283, R 0.5639 vs
+  0.5633 at 0.05. **The two execution paths do not disagree**, so no published number is
+  device-specific.
+- `isfRigsIjO` is the one regression: recall 0.492 → 0.364. But yolov9-c drew **728 boxes on a
+  one-ape clip at precision 0.243** — scattering boxes into the dark. yolov10-e draws 164 at
+  precision 0.799. A model that stopped guessing, not a model that got worse.
+
+**Failures and dead ends**
+
+- The first download contained the **baseline arm twice**: Drive names every arm's subfolder
+  `metrics`/`detections`, so two arms produce identically-named zips. Caught by reading
+  `model.variant` inside the files rather than trusting filenames. Had it gone unnoticed, the
+  "comparison" would have compared a run against itself and reported no difference.
+
+**Interpretation**
+
+The pretrained gap was **capacity, not domain mismatch.** That is the cleanest possible answer to
+the question Phase 1 existed to ask, and it arrived from a one-line config change rather than
+GPU-hours of training. It also retires the low-contrast narrative: night, shade and backlit clips go
+to 100%, 100% and 100% recall with a bigger model.
+
+**Next action**
+Adopt `MDV6-yolov10-e` as the default variant, re-run the annotated videos from it, and re-open the
+tracking question — association, not detection, is now the limit.

@@ -345,6 +345,13 @@ one asserting the recorded default still matches the installed library's signatu
    the config changes. Fine-tuning should be considered only after the free levers are exhausted, and
    §8 shows one of them was still untouched.
 
+   > **Done, 2026-07-27, and it changed the conclusion.** At the same 0.20 operating point the
+   > larger variant reaches **recall 0.745 at precision 0.862** — against 0.386 / 0.874 here — and
+   > tracking coverage doubles to 0.728. The pretrained gap this report describes was **capacity,
+   > not domain mismatch**. Everything from §4 on remains an accurate description of
+   > `MDV6-yolov9-c`; it is simply no longer the model to use. See
+   > [the variant comparison](variant_comparison_2026-07-27.md).
+
 ## 10. Conclusion
 
 Pretrained MegaDetector V6 is **precise but insensitive** on PanAf500: it rarely cries wolf
