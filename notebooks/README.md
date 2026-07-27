@@ -35,7 +35,7 @@ counts. Three reasons:
 ## Using the Colab notebook
 
 1. Open it in Colab.
-2. **Runtime → Change runtime type → T4 GPU**, *before* installing anything — changing the runtime
+2. **Runtime → Change runtime type → GPU** (A100 if available; T4 works), *before* installing anything — changing the runtime
    restarts the session and discards installs.
 3. Set `REPO_URL` in the clone cell.
 4. Run sections 1–3 (clone, install, verify). Colab may ask for a session restart after the install;

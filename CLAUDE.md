@@ -120,9 +120,10 @@ run does not fail: it produces correct results several times slower, so the cost
 afternoon rather than an error. `runtime.require_accelerator()` therefore **refuses** CPU, and
 `MegaDetectorV6Runner` calls it — there is no path to a CPU run through the CLI.
 
-Anything heavier than a few frames belongs on a **Colab T4** via
+Anything heavier than a few frames belongs on a **Colab GPU** via
 [`notebooks/phase1_colab.ipynb`](notebooks/phase1_colab.ipynb) — Runtime → Change runtime type →
-T4 GPU, *before* running any cell. All 10 clips run end to end there.
+GPU, *before* running any cell. All 10 clips run end to end there. The A100 is the runtime
+actually used for this project; a T4 works and is roughly 3x slower.
 
 `PANAF_ALLOW_CPU_INFERENCE=1` exists only for debugging a non-performance bug on a machine with no
 accelerator. **Nothing measured under it is reportable**, least of all a timing.

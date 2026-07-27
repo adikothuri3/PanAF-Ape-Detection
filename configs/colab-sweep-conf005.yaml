@@ -32,7 +32,8 @@ model:
   model_name: MegaDetectorV6
   variant: MDV6-yolov9-c
   confidence_threshold: 0.05
-  # Colab T4. Inference never runs on CPU; this fails fast on a CPU runtime.
+  # Colab GPU (A100 preferred). Inference never runs on CPU; this fails fast
+  # on a CPU runtime rather than running for hours.
   device: cuda
 
 tracking:

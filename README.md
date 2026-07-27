@@ -155,7 +155,7 @@ sudo apt-get install ffmpeg  # Debian/Ubuntu
 
 Open [`notebooks/phase1_colab.ipynb`](notebooks/phase1_colab.ipynb) in Colab, then:
 
-1. **Runtime → Change runtime type → T4 GPU → Save** *(do this first — changing it later restarts
+1. **Runtime → Change runtime type → GPU → Save** (A100 if available; T4 works) *(do this first — changing it later restarts
    the session)*
 2. **Runtime → Run all**
 

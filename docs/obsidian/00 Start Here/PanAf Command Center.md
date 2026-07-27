@@ -85,7 +85,7 @@ write-up. This is a Beyond-Phase-1 cheap experiment, not a seventh step.
    and if it is tracks, the question is whether ByteTrack is the right tracker for footage whose hard
    cases score 0.05-0.10.
 3. **Variant comparison — now the active task, see above.** `MDV6-yolov10-e` is larger and
-   higher-resolution. Config-only change, ~40 min on a T4.
+   higher-resolution. Config-only change; roughly 15 min on an A100.
 
 Contrast preprocessing has dropped down the list: §8 shows the model already responds to those
 subjects, just weakly, so equalisation would be lifting scores rather than creating detections.
