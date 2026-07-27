@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from panaf_ape_detection import __version__
 from panaf_ape_detection.cli import app
+from panaf_ape_detection.config import load_config
 from panaf_ape_detection.manifest import MANIFEST_COLUMNS
 from panaf_ape_detection.reporting import TRACKING_METRICS_SCHEMA
 
@@ -135,7 +136,10 @@ def test_validate_config_defaults_to_base_config():
 def test_validate_config_shows_resolved_values():
     result = invoke("validate-config", "--config", "configs/base.yaml")
 
-    assert "MDV6-yolov9-c" in result.output
+    # The shipped default, whatever it currently is -- asserting a specific
+    # variant here made this test a tripwire for changing models rather than a
+    # test that the resolved value is displayed.
+    assert load_config(Path("configs/base.yaml")).model.variant in result.output
     assert "Resolved configuration" in result.output
 
 
