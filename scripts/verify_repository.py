@@ -94,6 +94,7 @@ REQUIRED_FILES: tuple[str, ...] = (
     "tests/test_evaluation.py",
     "tests/test_pipeline_runner.py",
     "tests/test_refine.py",
+    "tests/test_resume.py",
     "tests/test_retrack.py",
     "tests/test_tracking.py",
     "tests/test_video_and_overlays.py",
