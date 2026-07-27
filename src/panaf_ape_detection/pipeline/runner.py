@@ -24,6 +24,7 @@ from panaf_ape_detection.evaluation.tracking import ClipTrackEvaluation, evaluat
 from panaf_ape_detection.inference.filtering import filter_by_confidence, keep_animals
 from panaf_ape_detection.manifest import ManifestRow
 from panaf_ape_detection.provenance import build_run_metadata, file_sha256, write_run_metadata
+from panaf_ape_detection.reporting import TRACK_METRICS_SUBDIR
 from panaf_ape_detection.types import (
     Detection,
     FrameDetections,
@@ -344,7 +345,8 @@ def run_clip(
     track_evaluation = None
     if ground_truth and tracker is not None:
         track_evaluation = evaluate_tracking(row.clip_id, tracked_frames, ground_truth)
-        track_metrics_path = artifacts / "metrics" / f"{row.clip_id}_tracking.json"
+        # Its own directory, so a glob of metrics/ returns one schema only.
+        track_metrics_path = artifacts / "metrics" / TRACK_METRICS_SUBDIR / f"{row.clip_id}.json"
         track_metrics_path.parent.mkdir(parents=True, exist_ok=True)
         track_metrics_path.write_text(
             json.dumps(track_evaluation.as_dict(), indent=2) + "\n", encoding="utf-8"

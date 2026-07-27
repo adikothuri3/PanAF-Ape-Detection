@@ -30,6 +30,7 @@ from itertools import pairwise
 
 from panaf_ape_detection.data.annotations import GroundTruthFrame
 from panaf_ape_detection.evaluation.detection import DEFAULT_IOU_THRESHOLD, intersection_over_union
+from panaf_ape_detection.reporting import TRACKING_METRICS_SCHEMA
 from panaf_ape_detection.types import TrackedDetection
 
 __all__ = [
@@ -143,8 +144,14 @@ class ClipTrackEvaluation:
         return sum(1 for i in self.individuals if i.is_mostly_lost)
 
     def as_dict(self) -> dict[str, object]:
-        """Return a JSON-friendly summary for ``artifacts/metrics/``."""
+        """Return a JSON-friendly summary for ``artifacts/metrics/tracking/``.
+
+        Kept in its own directory, and self-identifying via ``schema``, because
+        this payload and :class:`~panaf_ape_detection.evaluation.detection.ClipEvaluation`
+        share just enough keys to be confused for one another.
+        """
         return {
+            "schema": TRACKING_METRICS_SCHEMA,
             "clip_id": self.clip_id,
             "iou_threshold": self.iou_threshold,
             "frames_evaluated": self.frames_evaluated,

@@ -64,6 +64,10 @@ ARTIFACT_SUBDIRECTORIES: tuple[str, ...] = (
     "frames",
     "metadata",
     "metrics",
+    # Track metrics are a different schema from detection metrics, so they get
+    # their own directory rather than a filename suffix -- a suffix only works
+    # if every reader remembers to filter, and one did not.
+    "metrics/tracking",
     "videos",
     "visualizations",
 )

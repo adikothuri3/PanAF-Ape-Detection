@@ -140,6 +140,28 @@ confidence 0.05 so they compare at every threshold).
 Phase 1 is **pretrained inference only**. No training loops, optimisers, or `requires_grad`
 toggling. Fine-tuning is a Beyond-Phase-1 question, and only if a variant comparison justifies it.
 
+### The artifacts contract — one directory, one schema
+
+`artifacts/metrics/` holds **detection** metrics; `artifacts/metrics/tracking/` holds **track**
+metrics. They are different shapes that share `clip_id`, `frames_evaluated` and `iou_threshold` —
+enough to look interchangeable, not enough to be. They were once distinguished only by a filename
+suffix, and a notebook cell that globbed the directory crashed with `KeyError: 'overall'` for every
+user who enabled tracking.
+
+**Never read `artifacts/` by hand.** `panaf_ape_detection.reporting` has the loaders, they are
+tested, and they tolerate the legacy layout. Adding a third artifact shape means a third directory
+and a `schema` field, not a fourth filename convention.
+
+### Notebook code is code
+
+`notebooks/` is **not** excluded from ruff, and `make verify` statically checks every cell: it must
+parse, use no name an earlier cell has not defined, invoke no `uv` (Colab has none), reference only
+configs that exist and only registered CLI commands. `tests/test_notebook_cells.py` then *executes*
+every read-only cell against a synthetic `artifacts/` tree.
+
+That machinery exists because three notebook defects reached the user in a row. Analysis logic goes
+in `reporting.py` where it is typed and tested; a notebook cell should be a thin call.
+
 ### Do not stub CLI commands
 
 Unimplemented pipeline commands are **absent**, not registered-and-raising. `make verify` fails if

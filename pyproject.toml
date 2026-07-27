@@ -93,7 +93,14 @@ packages = ["src/panaf_ape_detection"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests", "scripts"]
-extend-exclude = ["notebooks"]
+# Notebooks are NOT excluded. They were, and that is precisely why three defects
+# shipped from notebook code that ruff, mypy and pytest never saw.
+
+[tool.ruff.format]
+# Ruff 0.16 formats Python code blocks inside Markdown. Several notes quote
+# upstream source verbatim as evidence (supervision's hardcoded thresholds, for
+# one); reformatting a quotation makes it no longer a quotation.
+exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [
@@ -124,6 +131,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"notebooks/*.ipynb" = [
+    # Cells re-import so each is runnable on its own after a restart.
+    "F811",
+    # `from IPython.display import display` shadows a builtin by design.
+    "A004",
+]
 # ARG001: pytest fixtures are frequently requested purely for their side effect
 # (patching, temp state) and are "unused" by argument analysis.
 "tests/*" = ["D100", "D103", "ANN201", "ANN001", "ARG001"]

@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 from panaf_ape_detection import __version__
 from panaf_ape_detection.cli import app
 from panaf_ape_detection.manifest import MANIFEST_COLUMNS
+from panaf_ape_detection.reporting import TRACKING_METRICS_SCHEMA
 
 WriteConfig = Callable[..., Path]
 
@@ -398,9 +399,14 @@ def test_track_measures_saved_detections_and_writes_metrics(
     result = invoke("track", "--config", str(config))
 
     assert result.exit_code == 0, result.output
-    written = tmp_path / "artifacts" / "metrics" / "clip-a_tracking.json"
+    # Track metrics live in their own directory: a suffix in metrics/ meant every
+    # reader had to filter, and the notebook did not.
+    written = tmp_path / "artifacts" / "metrics" / "tracking" / "clip-a.json"
     metrics = json.loads(written.read_text(encoding="utf-8"))
     assert metrics["clip_id"] == "clip-a"
     assert metrics["annotated_individuals"] == 1
     assert metrics["total_id_switches"] == 0
     assert metrics["minimum_track_length"] == 1
+    assert metrics["schema"] == TRACKING_METRICS_SCHEMA
+    # Nothing but detection metrics in metrics/ itself.
+    assert list((tmp_path / "artifacts" / "metrics").glob("*.json")) == []

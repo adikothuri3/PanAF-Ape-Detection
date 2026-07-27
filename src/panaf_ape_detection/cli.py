@@ -39,6 +39,7 @@ from panaf_ape_detection.evaluation.detection import MatchCounts
 from panaf_ape_detection.evaluation.tracking import ClipTrackEvaluation
 from panaf_ape_detection.manifest import ManifestRow
 from panaf_ape_detection.paths import RepositoryPaths, repository_root
+from panaf_ape_detection.reporting import TRACK_METRICS_SUBDIR
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable, Iterator
@@ -694,7 +695,7 @@ def track(
     discarded and recomputed, so the numbers always match the settings printed.
 
     Reports ID switches, fragmentation and coverage per clip, and writes
-    ``artifacts/metrics/<clip>_tracking.json``.
+    ``artifacts/metrics/tracking/<clip>.json``.
     """
     import json as _json
 
@@ -764,7 +765,7 @@ def track(
         )
         evaluation = evaluate_tracking(row.clip_id, tracked, truth)
 
-        destination = paths.artifacts_dir / "metrics" / f"{row.clip_id}_tracking.json"
+        destination = paths.artifacts_dir / "metrics" / TRACK_METRICS_SUBDIR / f"{row.clip_id}.json"
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
             _json.dumps(

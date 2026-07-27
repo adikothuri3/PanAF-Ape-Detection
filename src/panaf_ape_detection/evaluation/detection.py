@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from panaf_ape_detection.data.annotations import GroundTruthDetection, GroundTruthFrame
+from panaf_ape_detection.reporting import DETECTION_METRICS_SCHEMA
 from panaf_ape_detection.types import BoundingBox, Detection
 
 __all__ = [
@@ -243,8 +244,14 @@ class ClipEvaluation:
     mean_iou: float = 0.0
 
     def as_dict(self) -> dict[str, object]:
-        """Return a JSON-friendly summary for ``artifacts/metrics/``."""
+        """Return a JSON-friendly summary for ``artifacts/metrics/<clip>.json``.
+
+        The ``schema`` field is not decoration: track metrics share ``clip_id``,
+        ``frames_evaluated`` and ``iou_threshold`` with this payload, which is
+        enough for a consumer to mistake one for the other. It did, and crashed.
+        """
         return {
+            "schema": DETECTION_METRICS_SCHEMA,
             "clip_id": self.clip_id,
             "iou_threshold": self.iou_threshold,
             "confidence_threshold": self.confidence_threshold,

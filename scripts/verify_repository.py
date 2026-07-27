@@ -14,6 +14,8 @@ printed with enough context to act on.
 
 from __future__ import annotations
 
+import ast
+import builtins
 import json
 import re
 import subprocess
@@ -350,6 +352,153 @@ def check_notebooks_have_no_stored_output() -> None:
                 fail(f"{relative} cell {index} has an execution count; clear it before committing")
 
 
+# Names a notebook may use without any cell defining them: Python builtins plus
+# what IPython injects into the namespace.
+_NOTEBOOK_GLOBALS: frozenset[str] = frozenset(dir(builtins)) | frozenset(
+    {"display", "get_ipython", "In", "Out", "exit", "quit"}
+)
+
+
+def _blank_magics(source: str) -> str:
+    """Replace IPython ``!``/``%`` lines with ``pass`` so the cell parses.
+
+    Their content is checked separately as text; the point here is to let
+    ``ast`` see the surrounding Python.
+    """
+    lines = []
+    for line in source.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("!", "%")):
+            lines.append(" " * (len(line) - len(stripped)) + "pass")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _bound_names(tree: ast.AST) -> set[str]:
+    """Collect every name a parsed cell binds.
+
+    Covers assignment, imports, def/class, comprehension and loop targets,
+    ``with``/``except ... as``, and **all** argument forms including lambdas --
+    the last of which is why this is a function rather than a walk over
+    ``ast.Name`` alone.
+    """
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            bound.add(node.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or (
+            isinstance(node, ast.ExceptHandler) and node.name
+        ):
+            # `except ... as name` binds name for the duration of the handler.
+            if node.name:
+                bound.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            bound.update(node.names)
+        if isinstance(node, ast.arguments):
+            for arg in (*node.posonlyargs, *node.args, *node.kwonlyargs):
+                bound.add(arg.arg)
+            for optional in (node.vararg, node.kwarg):
+                if optional is not None:
+                    bound.add(optional.arg)
+    return bound
+
+
+def check_notebook_code_is_sound() -> None:
+    """Static checks over notebook code, which nothing else lints or tests.
+
+    Three notebook defects reached the user in a row -- an install guard that
+    reported a failure that had not happened, a call to ``uv`` (which Colab does
+    not have) passed as one concatenated string to a varargs helper, and a glob
+    that mixed two JSON schemas. The first two are exactly what this catches.
+
+    The third is not statically detectable; it is covered by moving that logic
+    into ``panaf_ape_detection.reporting`` and testing it there.
+    """
+    for notebook_path in sorted((REPO_ROOT / "notebooks").glob("*.ipynb")):
+        relative = notebook_path.relative_to(REPO_ROOT)
+        try:
+            document = json.loads(notebook_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue  # already reported by check_notebooks_are_valid_json
+
+        defined = set(_NOTEBOOK_GLOBALS)
+        whole_text: list[str] = []
+
+        for index, cell in enumerate(document.get("cells", [])):
+            source = "".join(cell.get("source", []))
+            whole_text.append(source)
+            if cell.get("cell_type") != "code":
+                continue
+
+            try:
+                tree = ast.parse(_blank_magics(source))
+            except SyntaxError as exc:
+                fail(f"{relative} cell {index} does not parse: {exc}")
+                continue
+
+            bound = _bound_names(tree)
+            used = {
+                node.id
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+            }
+            for name in sorted(used - bound - defined):
+                fail(
+                    f"{relative} cell {index} uses {name!r}, which no earlier cell defines. "
+                    "Run all would fail here."
+                )
+            defined |= bound
+
+        text = "\n".join(whole_text)
+
+        # Colab has no uv; every command must be a plain interpreter invocation.
+        if re.search(r"\buv\s+(run|sync|pip|venv)\b", text):
+            fail(
+                f"{relative} invokes `uv`, which is not installed on Colab. "
+                "Use `run(sys.executable, ...)` instead."
+            )
+
+        # run() takes *args; a single string means subprocess tries to exec a
+        # program whose name contains spaces. Checked with ast rather than a
+        # regex -- a regex over the source spans argument lists and reports
+        # correct multi-argument calls as failures.
+        for cell_index, cell_source in enumerate(whole_text):
+            try:
+                cell_tree = ast.parse(_blank_magics(cell_source))
+            except SyntaxError:
+                continue  # already reported above
+            for node in ast.walk(cell_tree):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                    continue
+                if node.func.id != "run" or len(node.args) != 1 or node.keywords:
+                    continue
+                only = node.args[0]
+                if (
+                    isinstance(only, ast.Constant)
+                    and isinstance(only.value, str)
+                    and " " in only.value
+                ):
+                    fail(
+                        f"{relative} cell {cell_index} calls run({only.value[:40]!r}...) "
+                        "with a single string. run() takes separate arguments."
+                    )
+
+        for config in sorted(set(re.findall(r"configs/[\w.-]+\.yaml", text))):
+            if not (REPO_ROOT / config).is_file():
+                fail(f"{relative} references {config}, which does not exist")
+
+        for subcommand in sorted(set(re.findall(r'cli",\s*"([\w-]+)"', text))):
+            if subcommand not in EXPECTED_CLI_COMMANDS:
+                fail(
+                    f"{relative} runs `panaf-phase1 {subcommand}`, which is not a registered "
+                    f"command (expected one of {sorted(EXPECTED_CLI_COMMANDS)})"
+                )
+
+
 def check_cli_exposes_only_implemented_commands() -> None:
     """The CLI must not advertise unimplemented pipeline stages."""
     sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -653,6 +802,7 @@ CHECKS: tuple[tuple[str, str, Callable[[], None]], ...] = (
     ),
     ("notebooks", "notebooks are valid JSON", check_notebooks_are_valid_json),
     ("notebooks", "notebooks carry no stored output", check_notebooks_have_no_stored_output),
+    ("notebooks", "notebook code is statically sound", check_notebook_code_is_sound),
     ("cli", "CLI exposes only implemented commands", check_cli_exposes_only_implemented_commands),
     (
         "cli",

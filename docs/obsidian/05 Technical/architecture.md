@@ -75,6 +75,28 @@ src/panaf_ape_detection/
     └── runner.py       Orchestration: wires stages together per config.
 ```
 
+## The artifacts contract
+
+Outputs are read by the notebook, by ad-hoc analysis and by future phases, so their layout is an
+interface rather than an implementation detail:
+
+| Path | Contents |
+|---|---|
+| `artifacts/detections/<clip>.json` | Per-frame detections, with `track_id` when tracking ran |
+| `artifacts/metrics/<clip>.json` | Detection metrics — `overall`, `by_behaviour`, `by_size` |
+| `artifacts/metrics/tracking/<clip>.json` | Track metrics — ID switches, fragmentation, coverage |
+| `artifacts/metadata/<experiment>_<stamp>.json` | `RunMetadata`: commit, device, thresholds, checksums |
+| `artifacts/videos/<clip>_annotated.mp4` | Annotated clip |
+
+**One directory, one schema.** Detection and track metrics share `clip_id`, `frames_evaluated` and
+`iou_threshold` — enough that a reader can mistake one for the other, and one did: they were
+originally separated only by a `_tracking` filename suffix, and a notebook cell that globbed
+`metrics/*.json` crashed on the first tracked run. Both payloads now carry a `schema` field, and
+each lives in its own directory, so the mistake is not available to make.
+
+`panaf_ape_detection.reporting` is the only supported reader. It is pure standard library, so it
+works against a Drive copy with no repository around it, and it still reads the legacy layout.
+
 ## Dependency direction
 
 Dependencies point one way. Nothing lower imports something higher.

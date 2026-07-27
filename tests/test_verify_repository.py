@@ -306,3 +306,121 @@ def test_missing_required_files_are_caught(broken_repo: Path):
     verifier.check_required_paths()
 
     assert any("missing required file" in f for f in failures())
+
+
+# --------------------------------------------------------------------------- #
+# Notebook static analysis
+#
+# Notebook code is the one place ruff, mypy and pytest never reach, and three
+# defects shipped from there in a row. Each rule below is asserted to fire, and
+# the real notebook is asserted to pass -- a check that cannot fail is not a
+# check, and one that fires on correct code gets ignored.
+# --------------------------------------------------------------------------- #
+
+
+def code_cell(source: str) -> dict[str, object]:
+    return {
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": source.splitlines(keepends=True),
+    }
+
+
+def write_notebook(repo: Path, *sources: str) -> None:
+    write(repo / "notebooks" / "run.ipynb", json.dumps(notebook([code_cell(s) for s in sources])))
+
+
+def test_a_cell_that_does_not_parse_is_caught(broken_repo: Path):
+    write_notebook(broken_repo, "def broken(:\n    pass\n")
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("does not parse" in f for f in failures())
+
+
+def test_a_name_no_earlier_cell_defines_is_caught(broken_repo: Path):
+    """The ordering bug: Run all reaches a cell whose input never existed."""
+    write_notebook(broken_repo, "x = 1\n", "print(undefined_thing)\n")
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("undefined_thing" in f and "no earlier cell defines" in f for f in failures())
+
+
+def test_a_name_defined_by_an_earlier_cell_is_accepted(broken_repo: Path):
+    write_notebook(broken_repo, "value = 1\n", "print(value)\n")
+
+    verifier.check_notebook_code_is_sound()
+
+    assert not failures()
+
+
+def test_function_arguments_and_lambdas_do_not_trip_the_check(broken_repo: Path):
+    """Regression: the first draft flagged `*args` and lambda parameters."""
+    write_notebook(
+        broken_repo,
+        "def run(*args, first, second=2, **kwargs):\n    return args, first, second, kwargs\n",
+        "pairs = sorted({'a': 1}.items(), key=lambda kv: kv[1])\n",
+        "try:\n    pass\nexcept ValueError as exc:\n    print(exc)\n",
+        "with open('f') as handle:\n    print(handle)\n",
+        "print([n for n in range(3)])\n",
+    )
+
+    verifier.check_notebook_code_is_sound()
+
+    assert not failures()
+
+
+def test_magics_do_not_break_parsing(broken_repo: Path):
+    write_notebook(broken_repo, "!pip install thing\n%cd /tmp\nvalue = 1\n", "print(value)\n")
+
+    verifier.check_notebook_code_is_sound()
+
+    assert not failures()
+
+
+def test_uv_invocation_is_caught(broken_repo: Path):
+    """Colab has no uv. This exact bug shipped once."""
+    write_notebook(broken_repo, 'import subprocess\nsubprocess.run("uv run panaf-phase1 detect")\n')
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("uv" in f and "Colab" in f for f in failures())
+
+
+def test_run_called_with_one_long_string_is_caught(broken_repo: Path):
+    """run() takes *args; one string makes subprocess exec a name with spaces."""
+    write_notebook(broken_repo, "def run(*args):\n    pass\n", 'run("python -m thing detect")\n')
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("single string" in f for f in failures())
+
+
+def test_reference_to_a_missing_config_is_caught(broken_repo: Path):
+    write_notebook(broken_repo, 'config = "configs/does-not-exist.yaml"\n')
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("does not exist" in f for f in failures())
+
+
+def test_reference_to_an_unregistered_cli_command_is_caught(broken_repo: Path):
+    write_notebook(
+        broken_repo,
+        "import sys\nrun = print\n"
+        'run(sys.executable, "-m", "panaf_ape_detection.cli", "finetune")\n',
+    )
+
+    verifier.check_notebook_code_is_sound()
+
+    assert any("not a registered" in f for f in failures())
+
+
+def test_the_real_notebook_passes_every_rule():
+    """Guards against a rule so noisy that it would be disabled."""
+    verifier.check_notebook_code_is_sound()
+
+    assert not failures()
