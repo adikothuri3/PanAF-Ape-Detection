@@ -379,8 +379,19 @@ def main(argv: list[str] | None = None) -> int:
     raw_root = REPO_ROOT / "data" / "raw" / "panaf500"
     print(f"\nDownloading into {raw_root} ...")
     rows: list[dict[str, str]] = []
-    for profile, reason in selected:
-        video_path, annotation_path = download_clip(profile, raw_root)
+    failed: list[str] = []
+    total_clips = len(selected)
+    for number, (profile, reason) in enumerate(selected, start=1):
+        try:
+            video_path, annotation_path = download_clip(profile, raw_root)
+        except Exception as exc:
+            # Over 500 clips from a public research server, an occasional
+            # failure is expected. Aborting would discard every clip already
+            # fetched and write no manifest at all, so the run could not even
+            # start. Skip it, keep going, and say so at the end.
+            failed.append(profile.clip_id)
+            print(f"  [{number}/{total_clips}] {profile.clip_id}: FAILED ({exc})")
+            continue
         rows.append(
             {
                 "clip_id": profile.clip_id,
@@ -400,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
         size = video_path.stat().st_size
-        print(f"  {profile.clip_id}: {size:,} bytes")
+        print(f"  [{number}/{total_clips}] {profile.clip_id}: {size:,} bytes", flush=True)
 
     arguments.manifest.parent.mkdir(parents=True, exist_ok=True)
     with arguments.manifest.open("w", encoding="utf-8", newline="") as handle:
@@ -410,6 +421,12 @@ def main(argv: list[str] | None = None) -> int:
 
     total = sum((raw_root / "videos" / r["video_filename"]).stat().st_size for r in rows)
     print(f"\nWrote {arguments.manifest} ({len(rows)} clips, {total / 1e6:.1f} MB of video)")
+    if failed:
+        # Named, not just counted: the manifest is the record of what a run
+        # covered, and a silently smaller dataset is a silently different result.
+        print(f"\n{len(failed)} clip(s) could not be downloaded and are NOT in the manifest:")
+        print("  " + ", ".join(failed))
+        print("Re-running this script retries them; clips already on disk are skipped.")
     print("Reminder: data/ is git-ignored. Do not commit these files.")
     return 0
 

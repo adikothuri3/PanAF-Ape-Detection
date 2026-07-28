@@ -33,9 +33,11 @@ __all__ = [
     "DETECTION_METRICS_SCHEMA",
     "TRACKING_METRICS_SCHEMA",
     "TRACK_METRICS_SUBDIR",
+    "CacheSettings",
     "PooledCounts",
     "PooledTrackCounts",
     "ScoreBands",
+    "detection_cache_settings",
     "detection_fields",
     "format_recall_table",
     "latest_run_metadata",
@@ -315,6 +317,61 @@ def load_track_metrics(artifacts_dir: Path | str) -> list[dict[str, object]]:
 
     loaded = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     return sorted(loaded, key=lambda d: str(d.get("clip_id", "")))
+
+
+@dataclass(frozen=True, slots=True)
+class CacheSettings:
+    """The settings one saved detections file was produced under.
+
+    Attributes:
+        variant: Detector weights, e.g. ``MDV6-yolov10-e``.
+        confidence_threshold: Threshold boxes were filtered at before writing.
+        tracking_enabled: Whether track ids were baked into the records.
+    """
+
+    variant: str
+    confidence_threshold: float
+    tracking_enabled: bool
+
+    def describe(self) -> str:
+        """Render the settings for a human-readable report."""
+        tracking = "tracked" if self.tracking_enabled else "detector-only"
+        return f"{self.variant or 'unrecorded'} @ conf {self.confidence_threshold:g}, {tracking}"
+
+
+def detection_cache_settings(artifacts_dir: Path | str) -> dict[CacheSettings, int]:
+    """Group a detections cache by the settings each clip was produced under.
+
+    **More than one entry means the cache is a mixture, and any number computed
+    over it describes no single run.** That is not hypothetical: pointing two
+    different configs at one artifacts directory is easy to do by accident, and
+    every file involved is individually valid, so nothing else reveals it. The
+    clips written by the wrong config are then *skipped* by a resumed run,
+    because a resume only asks whether a file exists.
+
+    Args:
+        artifacts_dir: A run's artifacts directory.
+
+    Returns:
+        ``{settings: number of clips}``. Empty when nothing has been detected.
+    """
+    directory = Path(artifacts_dir) / "detections"
+    if not directory.is_dir():
+        return {}
+
+    counts: Counter[CacheSettings] = Counter()
+    for path in sorted(directory.glob("*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        model = document.get("model", {})
+        tracking = document.get("tracking", {})
+        counts[
+            CacheSettings(
+                variant=str(model.get("variant", "")),
+                confidence_threshold=float(model.get("confidence_threshold", 0.0)),
+                tracking_enabled=bool(tracking.get("enabled", False)),
+            )
+        ] += 1
+    return dict(counts)
 
 
 def _as_int(value: object) -> int:
