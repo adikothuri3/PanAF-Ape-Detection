@@ -624,6 +624,18 @@ def evaluate(
             help="Re-score at this threshold instead of the one used at detection time.",
         ),
     ] = None,
+    detections_dir: Annotated[
+        Path | None,
+        typer.Option("--detections-dir", help="Read detections from here instead of artifacts/."),
+    ] = None,
+    annotations_dir: Annotated[
+        Path | None,
+        typer.Option("--annotations-dir", help="Read ground truth from here instead of data/raw."),
+    ] = None,
+    per_clip: Annotated[
+        bool,
+        typer.Option("--per-clip/--pooled-only", help="Show a row per clip, not just the total."),
+    ] = True,
 ) -> None:
     """Recompute accuracy from saved detections, without re-running inference.
 
@@ -635,14 +647,13 @@ def evaluate(
     never written and cannot be recovered here. Lowering it requires re-running
     ``detect`` with a lower ``model.confidence_threshold``.
     """
-    from panaf_ape_detection.data.annotations import load_ground_truth
     from panaf_ape_detection.evaluation.detection import evaluate_clip
     from panaf_ape_detection.inference.filtering import filter_by_confidence
+    from panaf_ape_detection.pipeline.retrack import load_clip
     from panaf_ape_detection.reporting import detection_fields
     from panaf_ape_detection.types import Detection as _Detection
 
     loaded = _load_or_exit(config)
-    raw_root = loaded.repository_paths().raw_data_dir / "panaf500"
 
     title = "Accuracy from saved detections"
     if confidence is not None:
@@ -653,13 +664,14 @@ def evaluate(
 
     found = 0
     totals = [0, 0, 0]  # true positives, false positives, false negatives
-    for row, annotation, document in _saved_detection_documents(loaded):
+    for source in _clip_sources(loaded, detections_dir, annotations_dir):
+        document, truth = load_clip(source)
         stored_threshold = float(document["model"]["confidence_threshold"])
         threshold = stored_threshold if confidence is None else confidence
         if threshold < stored_threshold:
             _error_console.print(
                 f"[red]--confidence {threshold:.2f} is below the {stored_threshold:.2f} "
-                f"used when {row.clip_id} was detected.[/red]\n"
+                f"used when {source.clip_id} was detected.[/red]\n"
                 "Boxes under that score were never saved, so the result would look like a "
                 "genuine measurement while silently missing detections. Re-run "
                 "[bold]detect[/bold] with a lower model.confidence_threshold instead."
@@ -677,14 +689,8 @@ def evaluate(
             )
             for frame in document["frames"]
         }
-        truth = load_ground_truth(
-            raw_root / "annotations" / annotation,
-            frame_width=document["video"]["width"],
-            frame_height=document["video"]["height"],
-            clip_id=row.clip_id,
-        )
         evaluation = evaluate_clip(
-            row.clip_id,
+            source.clip_id,
             predictions,
             truth,
             confidence_threshold=threshold,
@@ -694,14 +700,15 @@ def evaluate(
         totals[0] += counts.true_positives
         totals[1] += counts.false_positives
         totals[2] += counts.false_negatives
-        table.add_row(
-            row.clip_id,
-            str(counts.true_positives + counts.false_positives),
-            f"{counts.precision:.3f}",
-            f"{counts.recall:.3f}",
-            f"{counts.f1:.3f}",
-            f"{evaluation.mean_iou:.3f}",
-        )
+        if per_clip:
+            table.add_row(
+                source.clip_id,
+                str(counts.true_positives + counts.false_positives),
+                f"{counts.precision:.3f}",
+                f"{counts.recall:.3f}",
+                f"{counts.f1:.3f}",
+                f"{evaluation.mean_iou:.3f}",
+            )
         found += 1
 
     if not found:
@@ -710,7 +717,8 @@ def evaluate(
             "Run [bold]panaf-phase1 detect[/bold] first."
         )
         raise typer.Exit(code=1)
-    console.print(table)
+    if per_clip:
+        console.print(table)
 
     pooled = MatchCounts(
         true_positives=totals[0], false_positives=totals[1], false_negatives=totals[2]
@@ -721,26 +729,49 @@ def evaluate(
     )
 
 
-def _clip_sources(loaded: Config, detections_dir: Path | None) -> list[Any]:
+def _clip_sources(
+    loaded: Config, detections_dir: Path | None, annotations_dir: Path | None = None
+) -> list[Any]:
     """Collect the clips a re-tracking command can work over.
+
+    Two ways of deciding *which* clips, and the second exists because the first
+    was a redundancy that blocked real work:
+
+    * **From the manifest** (default). The manifest is the record of a curated
+      sample, so it is the right source when re-tracking that sample.
+    * **From the detections directory**, when ``--detections-dir`` is given and
+      the manifest does not cover what is in it. ``--detections-dir`` already
+      names the clips; requiring a manifest that lists the same ones again means
+      a cache produced elsewhere -- another machine, a Colab session -- cannot be
+      re-tracked without first reconstructing a manifest for it, checksums and
+      all, for files that may not even be present.
 
     Args:
         loaded: The resolved configuration.
         detections_dir: Read detections from here instead of the configured
             artifacts directory.
+        annotations_dir: Read ground truth from here instead of
+            ``<raw_data_dir>/panaf500/annotations``.
 
     Returns:
-        A list of :class:`~panaf_ape_detection.pipeline.retrack.ClipSource`.
+        A list of :class:`~panaf_ape_detection.pipeline.retrack.ClipSource`,
+        ordered by clip id, and only for clips whose annotation exists.
     """
     from panaf_ape_detection.pipeline.retrack import ClipSource
 
     paths = loaded.repository_paths()
-    annotations = paths.raw_data_dir / "panaf500" / "annotations"
+    annotations = (
+        Path(annotations_dir)
+        if annotations_dir is not None
+        else paths.raw_data_dir / "panaf500" / "annotations"
+    )
     override = Path(detections_dir) if detections_dir is not None else None
 
     sources: list[Any] = []
+    seen: set[str] = set()
     for row, annotation, _ in _saved_detection_documents(loaded, detections_dir=override):
         stored = (override or paths.artifacts_dir / "detections") / f"{row.clip_id}.json"
+        seen.add(row.clip_id)
         sources.append(
             ClipSource(
                 clip_id=row.clip_id,
@@ -748,7 +779,25 @@ def _clip_sources(loaded: Config, detections_dir: Path | None) -> list[Any]:
                 annotation_path=annotations / annotation,
             )
         )
-    return sources
+
+    if override is not None:
+        # Anything in the directory the manifest did not account for. Skipped
+        # silently when no annotation exists, since a clip with no ground truth
+        # cannot be scored either way.
+        for stored in sorted(override.glob("*.json")):
+            clip_id = stored.stem
+            annotation_path = annotations / f"{clip_id}.json"
+            if clip_id in seen or not annotation_path.is_file():
+                continue
+            sources.append(
+                ClipSource(
+                    clip_id=clip_id,
+                    detections_path=stored,
+                    annotation_path=annotation_path,
+                )
+            )
+
+    return sorted(sources, key=lambda source: source.clip_id)
 
 
 def _write_tracked_detections(
@@ -855,6 +904,10 @@ def track(
         Path | None,
         typer.Option("--detections-dir", help="Read detections from here instead of artifacts/."),
     ] = None,
+    annotations_dir: Annotated[
+        Path | None,
+        typer.Option("--annotations-dir", help="Read ground truth from here instead of data/raw."),
+    ] = None,
     metrics_dir: Annotated[
         Path | None,
         typer.Option("--metrics-dir", help="Write track metrics here instead of artifacts/."),
@@ -907,7 +960,7 @@ def track(
             overrides[name] = value
     settings = RetrackSettings.from_config(loaded).with_values(overrides)
 
-    sources = _clip_sources(loaded, detections_dir)
+    sources = _clip_sources(loaded, detections_dir, annotations_dir)
     if not sources:
         _error_console.print(
             "[yellow]No saved detections found.[/yellow] "
@@ -967,6 +1020,10 @@ def track_sweep(
     detections_dir: Annotated[
         Path | None,
         typer.Option("--detections-dir", help="Read detections from here instead of artifacts/."),
+    ] = None,
+    annotations_dir: Annotated[
+        Path | None,
+        typer.Option("--annotations-dir", help="Read ground truth from here instead of data/raw."),
     ] = None,
     jobs: Annotated[
         int, typer.Option("--jobs", "-j", min=1, help="Worker processes to sweep arms across.")
@@ -1030,7 +1087,7 @@ def track_sweep(
         _error_console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
 
-    sources = _clip_sources(loaded, detections_dir)
+    sources = _clip_sources(loaded, detections_dir, annotations_dir)
     if not sources:
         _error_console.print(
             "[yellow]No saved detections found.[/yellow] "
@@ -1055,6 +1112,7 @@ def track_sweep(
     # The configured settings, so "better" always means better than the pipeline.
     reference = next((p for p, arm in scored if arm.settings == baseline), None)
     scored.sort(key=lambda pair: pair[0].identity_coverage, reverse=True)
+    ranked = scored
 
     # Enforce the merge ceiling in the tool rather than by eye. Identity coverage
     # can be *raised* by merging two apes into one track -- both then count the
@@ -1075,12 +1133,16 @@ def track_sweep(
         console.print(
             f"[dim]{rejected} arm(s) rejected for exceeding {max_merges} merged track(s).[/dim]"
         )
-        scored = within
+        # Only the *ranking* is filtered. The record below keeps every arm,
+        # including the rejected ones -- the trade-off between identity coverage
+        # and merged tracks is the finding here, and a file that holds only the
+        # arms which passed cannot show it.
+        ranked = within
 
     table = Table(title=f"{name} — ranked by identity coverage", header_style="bold")
     for column in ("ID cov.", "Cov.", "Sw.", "Frag.", "Purity", "Merges", "Jitter", "Settings"):
         table.add_column(column)
-    for pooled, arm in scored[:top]:
+    for pooled, arm in ranked[:top]:
         changed = {
             key: value
             for key, value in arm.settings.as_dict().items()
@@ -1122,6 +1184,7 @@ def track_sweep(
                 "name": name,
                 "clips": [source.clip_id for source in sources],
                 "baseline": baseline.as_dict(),
+                "max_merges": max_merges,
                 "elapsed_seconds": round(elapsed, 2),
                 "arms": [
                     {
@@ -1137,6 +1200,9 @@ def track_sweep(
                             "mostly_tracked": pooled.mostly_tracked,
                             "mostly_lost": pooled.mostly_lost,
                         },
+                        "within_merge_ceiling": (
+                            max_merges is None or pooled.id_merges <= max_merges
+                        ),
                     }
                     for pooled, arm in scored
                 ],
