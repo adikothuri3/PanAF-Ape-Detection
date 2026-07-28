@@ -70,7 +70,7 @@ What to run:
 
 ```
 panaf-phase1 track-sweep --grid configs/sweeps/around-candidate.yaml \
-    --config configs/tracking-candidate.yaml \
+    --config configs/base.yaml \
     --detections-dir artifacts/full500/detections --jobs 4 --max-merges 59
 ```
 

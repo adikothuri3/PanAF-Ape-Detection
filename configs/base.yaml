@@ -33,16 +33,36 @@ model:
   # The exact weight variant is recorded with every run. Do not remove it or
   # rely on an upstream default. See docs/obsidian/05 Technical/model.md for the recognised set.
   # MDV6-yolov10-e since 2026-07-27. Measured head-to-head against MDV6-yolov9-c
-  # over the same 10 clips at the same threshold: recall 0.386 -> 0.745 at
-  # unchanged precision (0.874 -> 0.862), and tracking coverage 0.351 -> 0.728.
-  # Costs ~22% more compute. It also peaks at the 0.20 threshold below, where
-  # yolov9-c did not. See reports/variant_comparison_2026-07-27.md.
+  # at the same threshold: recall 0.386 -> 0.745 at unchanged precision. Costs
+  # ~22% more compute. See reports/variant_comparison_2026-07-27.md.
   variant: MDV6-yolov10-e
-  # 0.20 is where MDV6-yolov10-e peaks (F1 0.799, and 0.799 again at 0.30), and
-  # it degrades gently either side. This was NOT true of yolov9-c, whose F1 rose
-  # all the way down to 0.05 -- its optimum was never found. Boxes below this are
-  # never written to disk, so a sweep downward needs a re-run.
-  confidence_threshold: 0.2
+  # 0.05, and deliberately not the threshold that maximises single-frame
+  # accuracy. Measured over all 500 PanAf500 clips (201,430 annotated boxes):
+  #
+  #   conf   0.05    0.20    0.30    0.40    0.50    0.70
+  #   F1    0.621   0.793   0.825   0.835   0.825   0.762
+  #
+  # Detection alone peaks at 0.40 (F1 0.835) -- not 0.20, which this file claimed
+  # until it was checked against the full dataset. That figure came from 10
+  # purposively-hard clips *and* from a run with tracking on, so drop_short_tracks
+  # had already deleted false positives before the detector was scored.
+  #
+  # The pipeline is not a detector, though, and what it produces is better than
+  # any single threshold can be. Tracked output over the same 500 clips:
+  #
+  #   detect 0.20 + the pre-2026-07-28 tracker   P 0.794  R 0.850  F1 0.821
+  #   detect 0.05 + the tracker below            P 0.855  R 0.859  F1 0.857
+  #
+  # Better on precision *and* recall, and above the 0.835 ceiling of the best
+  # possible threshold. The tracker discriminates using temporal consistency,
+  # which a per-frame threshold has no access to: a false positive at 0.15 is
+  # one frame of flicker and is discarded, while a real ape at 0.15 between two
+  # confident frames is absorbed into the track it belongs to.
+  #
+  # So detect generously and let the tracker filter. Boxes below this are never
+  # written to disk, which is the other reason to keep it low: anything above
+  # 0.05 can be recovered later for free, and nothing below it ever can.
+  confidence_threshold: 0.05
   # auto | cpu | cuda | mps
   #
   # POLICY: inference never runs on CPU. `cpu` is a valid value to the schema but
@@ -56,30 +76,74 @@ tracking:
   # ByteTrack, via supervision -- no new dependency, and its second association
   # pass over low-confidence boxes targets exactly the detector flicker this
   # baseline produces. See docs/obsidian/05 Technical/architecture.md.
+  # Chosen by a 72-arm sweep over all 500 clips, ranked by identity coverage and
+  # held to a hard ceiling on merged tracks. Against the settings that shipped
+  # before 2026-07-28, over 874 annotated individuals:
+  #
+  #                          before    after
+  #   identity coverage      0.7397   0.8230
+  #   ID switches              2257      301
+  #   fragmentation            2.48     1.27
+  #   tracks holding 2+ apes     57       56
+  #   jitter                 0.0153   0.0035
+  #   mostly tracked        625/874  645/874
+  #   mostly lost            65/874   74/874
+  #
+  # Nine more apes end up mostly-lost. That is the cost of the strict activation
+  # threshold below, and it is real: a faint animal now never gets a track
+  # started at all. See reports/phase1_findings_2026-07-28.md.
   enabled: true
   backend: bytetrack
-  # Tracks appearing in fewer frames than this are dropped after the clip is
-  # tracked; a two-frame track is detector flicker, not an animal.
-  minimum_track_length: 5
-  # Score at which a detection takes part fully in association. `null` follows
-  # model.confidence_threshold, which is what the pipeline did when this could
-  # not be set separately.
+  # 8 frames, a third of a second. Affordable only because activation is high:
+  # there is far less flicker left for it to remove. At the old settings this
+  # value deleted true positives.
+  minimum_track_length: 8
+  # 0.45, decoupled from model.confidence_threshold and nine times it. The single
+  # largest effect in the sweep.
   #
-  # Two upstream literals in supervision constrain what this can achieve, and
-  # neither is configurable: detections scoring <= 0.10 are discarded before
-  # either association pass, and a NEW track needs a detection scoring above
-  # activation + 0.10. So at 0.20 here, starting a track takes a 0.30 box.
-  activation_threshold: null
-  # Frames a track survives unmatched, expressed at 30 fps. supervision rescales
-  # it by the clip's rate -- `int(fps / 30 * buffer)` -- so at PanAf's 24 fps
-  # this is 24 frames, 1.0 s, not 30.
-  lost_track_buffer: 30
-  # IoU-distance threshold for association.
+  # Two upstream literals in supervision constrain this, and neither is
+  # configurable: detections scoring <= 0.10 are discarded before either
+  # association pass, and a NEW track needs a detection scoring above
+  # activation + 0.10. So starting a track here takes a 0.55 box, while anything
+  # down to score_floor can still *extend* one. Only a confident detection opens
+  # an identity; faint ones continue an existing animal. Spurious track creation
+  # was the main source of fragmentation.
+  activation_threshold: 0.45
+  # 120 at 30 fps = 96 frames = 4.0 s at PanAf's 24 fps (supervision rescales by
+  # `int(fps / 30 * buffer)`). Long enough that the tracker's own motion model
+  # reconnects the gaps offline stitching was written to repair, which is why
+  # stitch_max_gap below is 0.
+  lost_track_buffer: 120
+  # 0.8, and NOT the 0.9 that a 10-clip sweep preferred. This is the knob that
+  # drives merged tracks, by a wide margin -- mean merged tracks across the 500-
+  # clip sweep were 46.7 at 0.7, 54.9 at 0.8, and 71.9 at 0.9. Permissive
+  # association, not a long memory, is what fuses two animals into one identity.
   minimum_matching_threshold: 0.8
-  # Frames a new track must be seen in before it is reported. Unlike
-  # minimum_track_length this is applied online, so it suppresses flicker
-  # without needing the whole clip first.
+  # 1, i.e. off. It helped a great deal before activation was raised (ID switches
+  # 46 -> 18 on its own, on the 10-clip sample) but it costs coverage, and once
+  # activation is doing the work it earns nothing.
   minimum_consecutive_frames: 1
+  # Works around supervision's hardcoded `scores > 0.1`, which silently discards
+  # 18.6% of detections at this confidence threshold -- by the low-score
+  # association pass that is the entire reason ByteTrack was chosen. Scores are
+  # mapped into [0.11, 1] before association and mapped back before anything is
+  # written, so no artifact ever records a rescaled score.
+  score_floor: 0.11
+  # 0, i.e. off -- a result, not an oversight. Stitching works: on the untuned
+  # baseline it cuts tracks 59 -> 46 and fragmentation 2.57 -> 2.00. It changes
+  # nothing at these settings, because lost_track_buffer already reconnects the
+  # same fragments, with a motion model rather than a repair afterwards.
+  stitch_max_gap: 0
+  stitch_max_distance: 1.0
+  # Fill interior gaps up to one second. The only mechanism that can lift
+  # coverage above detection recall, and it costs almost nothing in precision
+  # because the synthesised boxes land on real apes. Every one is flagged
+  # `interpolated` in the artifacts, so Phase 2 can exclude boxes no detector saw.
+  interpolate_max_gap: 24
+  # Five-frame centred average. Cuts jitter by 77% and slightly *raises*
+  # precision and recall, because steadier boxes clear the IoU 0.5 threshold
+  # more often.
+  smooth_window: 5
 
 video:
   output_fps: 24.0
