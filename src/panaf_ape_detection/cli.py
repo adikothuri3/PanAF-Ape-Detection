@@ -884,6 +884,14 @@ def track_sweep(
         int, typer.Option("--jobs", "-j", min=1, help="Worker processes to sweep arms across.")
     ] = 1,
     top: Annotated[int, typer.Option("--top", min=1, help="Arms to display.")] = 15,
+    max_merges: Annotated[
+        int | None,
+        typer.Option(
+            "--max-merges",
+            min=0,
+            help="Reject arms with more than this many tracks holding 2+ apes.",
+        ),
+    ] = None,
 ) -> None:
     """Try many tracker settings over saved detections and rank them.
 
@@ -896,6 +904,13 @@ def track_sweep(
     animal across several tracks, and ID switches alone would reward merging two
     animals into one; identity coverage is pushed down by both. ``purity`` and
     ``merges`` are printed beside it so a merge-driven "win" is visible.
+
+    Visible is not the same as prevented. Identity coverage can still be *raised*
+    by merging two apes, because both then count the merged track as their
+    dominant one. ``--max-merges`` makes the ceiling a rule the tool enforces
+    rather than something to notice afterwards, which is worth doing: validating
+    on 500 clips produced an arm that improved every other number while merged
+    tracks went from 59 to 79.
 
     Writes every arm to ``artifacts/metrics/tracking-sweep/<name>.json``, which
     is its own directory and schema because this payload is neither detection
@@ -952,6 +967,27 @@ def track_sweep(
     # The configured settings, so "better" always means better than the pipeline.
     reference = next((p for p, arm in scored if arm.settings == baseline), None)
     scored.sort(key=lambda pair: pair[0].identity_coverage, reverse=True)
+
+    # Enforce the merge ceiling in the tool rather than by eye. Identity coverage
+    # can be *raised* by merging two apes into one track -- both then count the
+    # merged track as their dominant one -- so ranking on it alone will happily
+    # promote an arm that is more wrong. Validating on 500 clips showed exactly
+    # that: merges rose 59 -> 79 while every other number improved.
+    if max_merges is not None:
+        within = [pair for pair in scored if pair[0].id_merges <= max_merges]
+        rejected = len(scored) - len(within)
+        if not within:
+            _error_console.print(
+                f"[red]No arm keeps tracks holding 2+ apes at or below {max_merges}.[/red]\n"
+                f"The best any arm managed was {min(p.id_merges for p, _ in scored)}. "
+                "Either the ceiling is too strict, or these settings genuinely cannot "
+                "separate the animals in this footage."
+            )
+            raise typer.Exit(code=1)
+        console.print(
+            f"[dim]{rejected} arm(s) rejected for exceeding {max_merges} merged track(s).[/dim]"
+        )
+        scored = within
 
     table = Table(title=f"{name} — ranked by identity coverage", header_style="bold")
     for column in ("ID cov.", "Cov.", "Sw.", "Frag.", "Purity", "Merges", "Jitter", "Settings"):

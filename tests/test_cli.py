@@ -551,3 +551,37 @@ def test_track_sweep_rejects_an_unknown_axis(
 
     assert result.exit_code == 1
     assert "unknown tracker setting" in unwrap(result.output)
+
+
+def test_track_sweep_rejects_arms_that_merge_too_many_apes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """The merge ceiling has to be enforced, not merely displayed.
+
+    Identity coverage can be raised by fusing two apes into one track, because
+    both then count the merged track as their dominant one. Validating on 500
+    clips produced exactly that: every other number improved while merged tracks
+    went 59 -> 79.
+    """
+    pytest.importorskip("supervision", reason="requires the inference extra")
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    grid = tmp_path / "grid.yaml"
+    grid.write_text("name: ceiling\naxes:\n  lost_track_buffer: [30, 60]\n", encoding="utf-8")
+
+    # No arm can have fewer than zero merged tracks, so a ceiling below zero is
+    # unreachable by construction -- the command must say so rather than rank
+    # an empty list.
+    result = invoke(
+        "track-sweep", "--grid", str(grid), "--config", str(config), "--max-merges", "0"
+    )
+
+    # The fixture's single stationary ape produces no merges, so 0 is satisfiable
+    # and the command should succeed while reporting the ceiling was applied.
+    assert result.exit_code == 0, result.output
+    assert "rejected" in unwrap(result.output)

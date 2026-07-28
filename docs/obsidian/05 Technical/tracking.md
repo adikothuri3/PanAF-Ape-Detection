@@ -92,47 +92,57 @@ once. Coverage minus identity coverage is the fragmentation tax.
 - **Smoothing** is a symmetric centred average. Symmetry matters: a one-sided window at the ends of
   a track would drag the first and last boxes inward and bend straight motion.
 
-## Measured results — 10 clips, pending validation
+## Measured results — validated on all 500 clips
 
-Staged sweep over the detector-only cache at confidence 0.05
-(`artifacts/colab/variant-yolov10e/`), shipped settings versus
+Tuned on 10 clips, then measured on the whole dataset: **500 clips, 874 annotated individuals**,
+detector-only cache at confidence 0.05. Shipped settings versus
 [`configs/tracking-candidate.yaml`](../../../configs/tracking-candidate.yaml):
 
 | | shipped | candidate |
 | --- | --- | --- |
-| Identity coverage | 0.6449 | **0.7561** |
-| Coverage | 0.7284 | 0.7639 |
-| ID switches | 46 | **4** |
-| Fragmentation | 2.57 | **1.13** |
-| Track purity | 0.9963 | 0.9975 |
-| Tracks holding 2+ apes | 3 | 2 |
-| Jitter | 0.0230 | **0.0042** |
-| Mostly tracked | 13/23 | 16/23 |
-| Detection precision | 0.9530 | 0.9556 |
-| Detection recall | 0.7246 | 0.7639 |
+| Identity coverage | 0.7436 | **0.8197** |
+| Coverage | 0.8621 | 0.8709 |
+| ID switches | 1910 | **409** |
+| Fragmentation | 2.65 | **1.30** |
+| Track purity | 0.9970 | 0.9913 |
+| Tracks holding 2+ apes | 59 | **79** |
+| Jitter | 0.0161 | **0.0037** |
+| Mostly tracked | 640/874 | 670/874 |
+| Mostly lost | 59/874 | 65/874 |
 
-Three results worth keeping separately from the table:
+**The gain is real and it was oversold.** On the 10 tuning clips the margin was +11.1pp identity
+coverage; on 500 it is **+7.6pp**. Roughly a third of the apparent improvement was fitting the
+tuning set. Both arms also score higher in absolute terms here, because the 10 clips were
+purposively chosen to be hard.
+
+Three results worth keeping separate from the table:
 
 - **Activation threshold did the most work**, raised to 0.40 — twice the detector threshold. Only a
-  strong detection should open a new identity; faint ones should extend an existing track. Spurious
-  track creation was the main source of fragmentation.
+  strong detection should open a new identity; faint ones should extend an existing track. A
+  108-arm sweep over activation 0.10–0.30 never beat it (best 0.8018 against 0.8197).
 - **Detect permissively, let the tracker filter.** Raw precision at confidence 0.05 is 0.64, but the
-  *tracked* output is 0.9556 — better than the 0.9308 the 0.20 pipeline reported, at higher recall.
-- **Stitching turned out to be redundant here, and that is a result rather than an oversight.** It
-  demonstrably works (on the untuned baseline: tracks 59 → 46, fragmentation 2.57 → 2.00) but
-  changes nothing at the tuned operating point, because `lost_track_buffer: 120` already reconnects
-  the same fragments — using a motion model inside the tracker rather than a repair afterwards.
+  *tracked* output beats the 0.20 pipeline at higher recall. The tracker discriminates using
+  temporal consistency, which a per-frame threshold has no access to.
+- **Stitching is redundant here, and that is a result.** It demonstrably works (untuned baseline:
+  tracks 59 → 46, fragmentation 2.57 → 2.00) but changes nothing at the tuned operating point,
+  because `lost_track_buffer: 120` already reconnects the same fragments — with a motion model
+  inside the tracker rather than a repair afterwards.
 
-> [!warning] Not adopted
-> Every number above was tuned **and** measured on the same 10 clips, which were purposively chosen
-> to be hard. That is the circumstance under which a tuned result means least. The candidate stays
-> out of `base.yaml` until it is confirmed on clips it was never tuned on;
-> [`configs/colab-full500.yaml`](../../../configs/colab-full500.yaml) produces them, and PanAf500's
-> own train/validation/test split is what to divide by.
+> [!warning] One regression, and it is the one that matters
+> Tracks holding two or more apes rose **59 → 79**, purity 0.9970 → 0.9913. As a rate: 2.5% of
+> shipped tracks against 7.0% of candidate tracks. On the 10-clip sample merges had *improved*
+> (3 → 2), so nothing before the full run hinted at it.
 >
-> PanAf500 is the ceiling for this, not a compromise: only that subset carries per-frame `ape_id`,
-> so on the rest of PanAf20K these metrics are undefined rather than merely expensive. See
-> [[dataset]].
+> Merging two animals into one track is the failure identity coverage can partly **reward** — both
+> apes then count the merged track as dominant. The rule fixed before measuring was "maximise
+> identity coverage, subject to merges not exceeding baseline", and by that rule the candidate
+> fails. `track-sweep --max-merges` now enforces the ceiling rather than printing the column and
+> hoping someone checks it.
+>
+> Open: whether a setting near the candidate keeps most of the +7.6pp while holding merges at 59.
+> [`configs/sweeps/around-candidate.yaml`](../../../configs/sweeps/around-candidate.yaml) answers
+> it, on CPU, over the cache already on disk. If nothing clears the ceiling, adopt the candidate
+> and report the merge cost — do not pick settings that hide it.
 
 ## Related
 
