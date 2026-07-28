@@ -285,3 +285,42 @@ panaf-phase1 track --config configs/tracking-legacy.yaml \
 The sweep that chose the settings: `configs/sweeps/around-candidate.yaml`, 72 arms, ranked by
 identity coverage under `--max-merges 59`. Its full record, including the arms that were rejected,
 is written to `artifacts/metrics/tracking-sweep/`.
+
+## The showcase clips
+
+Three clips rendered from the shipped configuration on Apple MPS — `ICIHqd95OX`, `FgJpFLxSmH` and
+`9uIpm1xLeI`, the crowded ones that held most of the original ID switches:
+
+```bash
+panaf-phase1 detect --config configs/base.yaml   # over a manifest of those three clips
+```
+
+They land in `artifacts/showcase/videos/`. Over those 10 individuals: **9 ID switches, 71
+interpolated boxes of 1844, jitter 0.0060.** Rendering them is also what exposed the last bug in
+this work — see below.
+
+**They are not committed, deliberately.** Annotated footage is a derived work of a
+non-commercially-licensed dataset, and this repository never redistributes it. Green is the
+prediction, amber is the dataset's ground truth and behaviour label; the legend is drawn on every
+frame so a still pulled out of the video is unambiguous about which box came from where.
+
+## A bug this work found by looking at its own output
+
+The showcase clips were rendered twice. The first attempt produced **jitter 0.0316 against 0.0035
+dataset-wide, and zero boxes flagged `interpolated`** — which should have been impossible with
+`interpolate_max_gap: 24` and `smooth_window: 5` in the config.
+
+Stitching, interpolation and smoothing were applied only on the re-tracking path. `track` measured
+one pipeline; `detect` produced artifacts from another. Every refinement setting in
+`configs/base.yaml` was parsed, validated, and then ignored by the command that writes the
+detections cache and the annotated video. Anyone cloning the repository and running `detect` would
+have got numbers that did not match this report.
+
+Both paths now call one `finalise_tracks()`, and a test asserts `detect` produces interpolated
+boxes when the configuration asks for them. Re-rendered: jitter 0.0060, 71 interpolated boxes.
+
+None of the measurements in this report were affected — all of them came through `track`, which did
+refine, and the 500-clip cache is detector-only so refinement never applied to it. But it is the
+third time in this project that a value was accepted, stored and never applied, after
+PyTorch-Wildlife's `device=` and its `det_conf_thres`. The lesson keeps being the same one:
+**verify by observing behaviour, never by the absence of an exception.**

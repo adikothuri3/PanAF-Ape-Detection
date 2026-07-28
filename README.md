@@ -40,6 +40,17 @@ what a third of the tracking gain turned out to be worth once it was tested on u
 
 No fine-tuning has been done; this phase exists to produce the evidence for that decision.
 
+### The annotated clips
+
+Three showcase clips are rendered from the shipped configuration by
+`panaf-phase1 detect`, into `artifacts/showcase/videos/`. They are **not committed**: annotated
+footage is a derived work of a non-commercially-licensed dataset, and this repository never
+redistributes it. Reproducing them locally takes about ten minutes on an Apple MPS machine.
+
+Green is the model's prediction with its track id; amber is the dataset's ground truth with its
+behaviour label. MegaDetector only ever outputs `animal` — the behaviour comes from the dataset,
+never from the model, and the legend is drawn on every frame so a still is unambiguous.
+
 Current task, reading progress and the deliverable checklist are tracked in
 [`docs/obsidian/00 Start Here/PanAf Command Center.md`](docs/obsidian/00%20Start%20Here/PanAf%20Command%20Center.md).
 
