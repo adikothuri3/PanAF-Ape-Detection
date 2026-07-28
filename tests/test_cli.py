@@ -626,3 +626,86 @@ def test_track_can_write_its_refined_boxes_for_evaluation(
     settings = detection_cache_settings(output)
     assert len(settings) == 1
     assert next(iter(settings)).tracking_enabled is True
+
+
+def test_track_finds_clips_the_manifest_does_not_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """A cache produced elsewhere must be usable without rebuilding a manifest.
+
+    ``--detections-dir`` already names the clips. Requiring a manifest to list
+    the same ones again meant a 500-clip run done on Colab could not be
+    re-tracked locally without inventing manifest rows -- checksums included --
+    for video files that were never downloaded.
+    """
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import json
+    import shutil
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    # A second clip present in the cache and in the annotations, but absent from
+    # the manifest -- exactly the Colab situation.
+    elsewhere = tmp_path / "cache"
+    shutil.copytree(tmp_path / "artifacts" / "detections", elsewhere)
+    shutil.copy(elsewhere / "clip-a.json", elsewhere / "clip-b.json")
+    annotations = tmp_path / "annotations"
+    annotations.mkdir()
+    source_annotations = tmp_path / "data" / "raw" / "panaf500" / "annotations"
+    shutil.copy(source_annotations / "clip-a.json", annotations / "clip-a.json")
+    shutil.copy(source_annotations / "clip-a.json", annotations / "clip-b.json")
+
+    output = tmp_path / "out"
+    result = invoke(
+        "track",
+        "--config",
+        str(config),
+        "--detections-dir",
+        str(elsewhere),
+        "--annotations-dir",
+        str(annotations),
+        "--metrics-dir",
+        str(output),
+    )
+
+    assert result.exit_code == 0, result.output
+    written = sorted(p.stem for p in (output / "metrics" / "tracking").glob("*.json"))
+    assert written == ["clip-a", "clip-b"], "the unlisted clip was not picked up"
+    assert json.loads((output / "metrics" / "tracking" / "clip-b.json").read_text())["clip_id"]
+
+
+def test_clips_without_ground_truth_are_skipped_not_guessed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """A clip with no annotation cannot be scored, so it must not appear at all."""
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import shutil
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+
+    elsewhere = tmp_path / "cache"
+    shutil.copytree(tmp_path / "artifacts" / "detections", elsewhere)
+    shutil.copy(elsewhere / "clip-a.json", elsewhere / "no-truth.json")
+
+    output = tmp_path / "out"
+    result = invoke(
+        "track",
+        "--config",
+        str(config),
+        "--detections-dir",
+        str(elsewhere),
+        "--metrics-dir",
+        str(output),
+    )
+
+    assert result.exit_code == 0, result.output
+    written = sorted(p.stem for p in (output / "metrics" / "tracking").glob("*.json"))
+    assert written == ["clip-a"]
