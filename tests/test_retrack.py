@@ -217,3 +217,76 @@ def test_stored_track_ids_are_recomputed_not_reused():
     found = {d.track_id for detections in tracked.values() for d in detections}
     assert found
     assert 999 not in found
+
+
+# --------------------------------------------------------------------------- #
+# Writing the tracker's refined boxes back out
+# --------------------------------------------------------------------------- #
+
+
+def test_tracked_detections_round_trip_with_ids_and_interpolation(tmp_path: Path):
+    """What the tracker produced must survive being written and read again.
+
+    The output boxes are not the input boxes -- short tracks dropped, gaps
+    filled, positions smoothed -- so this file is the only record of them. Two
+    fields have to survive in particular: `track_id`, which pydantic drops if the
+    wrong container is used, and `interpolated`, which is how a synthesised box
+    stays distinguishable from a detected one.
+    """
+    pytest.importorskip("supervision", reason="requires the inference extra")
+
+    from panaf_ape_detection.pipeline.runner import restore_frames, write_detections_document
+    from panaf_ape_detection.reporting import detection_cache_settings
+    from panaf_ape_detection.types import TrackedDetection, TrackedFrameDetections
+
+    box = {"x_min": 10.0, "y_min": 10.0, "x_max": 110.0, "y_max": 110.0}
+    tracked = {
+        0: [
+            TrackedDetection(
+                box=box, confidence=0.9, category_id=0, category_name="animal", track_id=7
+            )
+        ],
+        1: [
+            TrackedDetection(
+                box=box,
+                confidence=0.4,
+                category_id=0,
+                category_name="animal",
+                track_id=7,
+                interpolated=True,
+            )
+        ],
+    }
+    records = [
+        TrackedFrameDetections(
+            clip_id="clip-a",
+            frame_index=index,
+            frame_width=WIDTH,
+            frame_height=HEIGHT,
+            timestamp_seconds=index / 24.0,
+            detections=detections,
+        )
+        for index, detections in sorted(tracked.items())
+    ]
+
+    destination = tmp_path / "detections" / "clip-a.json"
+    write_detections_document(
+        destination,
+        clip_id="clip-a",
+        model={"name": "MegaDetectorV6", "variant": "MDV6-yolov10-e", "confidence_threshold": 0.05},
+        tracking={"enabled": True, "backend": "bytetrack", "minimum_track_length": 8},
+        video={"width": WIDTH, "height": HEIGHT, "fps": 24.0, "frame_count": 2},
+        records=records,
+    )
+
+    document = json.loads(destination.read_text(encoding="utf-8"))
+    _, restored = restore_frames(document)
+
+    assert {d.track_id for dets in restored.values() for d in dets} == {7}
+    assert restored[0][0].interpolated is False
+    assert restored[1][0].interpolated is True, "a synthesised box lost its flag on the round trip"
+
+    # And it reads as a coherent cache, so `evaluate` and the guards accept it.
+    settings = detection_cache_settings(tmp_path)
+    assert len(settings) == 1
+    assert next(iter(settings)).tracking_enabled is True

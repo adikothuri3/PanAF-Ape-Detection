@@ -44,6 +44,7 @@ __all__ = [
     "restore_frames",
     "run_clip",
     "run_manifest",
+    "write_detections_document",
 ]
 
 logger = logging.getLogger(__name__)
@@ -214,11 +215,63 @@ def restore_frames(
                     **detection_fields(record),
                     track_id=int(record["track_id"]),
                     behavior_label=record.get("behavior_label"),
+                    # Carried explicitly, and easy to forget: this function
+                    # predates the field, and a default of False would silently
+                    # turn every synthesised box back into an apparent detection
+                    # on the way in. The flag is the only thing that keeps an
+                    # interpolated box distinguishable downstream.
+                    interpolated=bool(record.get("interpolated", False)),
                 )
                 for record in records
                 if record.get("track_id") is not None
             ]
     return per_frame, tracked_frames
+
+
+def write_detections_document(
+    destination: Path,
+    *,
+    clip_id: str,
+    model: Mapping[str, object],
+    tracking: Mapping[str, object],
+    video: Mapping[str, object],
+    records: Sequence[FrameDetections],
+) -> None:
+    """Write one clip's detections in the schema every reader expects.
+
+    The single writer for this shape. It was inline in :func:`run_clip`, and the
+    moment a second producer appeared -- ``panaf-phase1 track --write-detections``
+    -- two copies of the layout would have had to stay in step by hand. They
+    would not have: this is the same file whose ``track_id`` field already broke
+    ``evaluate`` once, because one side of a pair changed and the other did not.
+
+    Args:
+        destination: Where to write, e.g. ``artifacts/detections/<clip>.json``.
+        clip_id: Manifest identifier.
+        model: Detector provenance -- name, variant, device, threshold.
+        tracking: Tracker provenance -- whether it ran, and under what settings.
+        video: Clip geometry and frame rate.
+        records: Per-frame detections. Pass
+            :class:`~panaf_ape_detection.types.TrackedFrameDetections` when
+            tracking ran; pydantic serialises to the *declared* field type, so a
+            plain :class:`~panaf_ape_detection.types.FrameDetections` here would
+            silently drop every ``track_id``.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "clip_id": clip_id,
+                "model": dict(model),
+                "tracking": dict(tracking),
+                "video": dict(video),
+                "frames": [record.model_dump(mode="json") for record in records],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def evaluate_and_write(
@@ -443,34 +496,27 @@ def run_clip(
                     )
                 )
 
-    detections_path.parent.mkdir(parents=True, exist_ok=True)
-    detections_path.write_text(
-        json.dumps(
-            {
-                "clip_id": row.clip_id,
-                "model": {
-                    "name": detector.name,
-                    "variant": detector.variant,
-                    "device": detector.device.value,
-                    "confidence_threshold": config.model.confidence_threshold,
-                },
-                "tracking": {
-                    "enabled": tracker is not None,
-                    "backend": tracker.name if tracker is not None else None,
-                    "minimum_track_length": config.tracking.minimum_track_length,
-                },
-                "video": {
-                    "width": properties.width,
-                    "height": properties.height,
-                    "fps": properties.fps,
-                    "frame_count": properties.frame_count,
-                },
-                "frames": [record.model_dump(mode="json") for record in records],
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    write_detections_document(
+        detections_path,
+        clip_id=row.clip_id,
+        model={
+            "name": detector.name,
+            "variant": detector.variant,
+            "device": detector.device.value,
+            "confidence_threshold": config.model.confidence_threshold,
+        },
+        tracking={
+            "enabled": tracker is not None,
+            "backend": tracker.name if tracker is not None else None,
+            "minimum_track_length": config.tracking.minimum_track_length,
+        },
+        video={
+            "width": properties.width,
+            "height": properties.height,
+            "fps": properties.fps,
+            "frame_count": properties.frame_count,
+        },
+        records=records,
     )
 
     evaluation, track_evaluation = evaluate_and_write(

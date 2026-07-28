@@ -751,6 +751,62 @@ def _clip_sources(loaded: Config, detections_dir: Path | None) -> list[Any]:
     return sources
 
 
+def _write_tracked_detections(
+    destination: Path,
+    *,
+    clip_id: str,
+    document: dict[str, Any],
+    tracked: dict[int, Any],
+    settings: Any,
+) -> None:
+    """Write the tracker's refined boxes back out as a detections document.
+
+    The output of tracking is not the same set of boxes as its input: short
+    tracks have been dropped, gaps interpolated, positions smoothed. Only by
+    writing it out can that output be measured against ground truth, or consumed
+    by a later stage.
+
+    The ``model`` block is copied from the source document rather than
+    reconstructed. These boxes originate from that detector run, and saying so is
+    what lets the file be read on its own later.
+
+    Args:
+        destination: Where to write.
+        clip_id: Manifest identifier.
+        document: The source detections document, for provenance and geometry.
+        tracked: ``{frame_index: tracked detections}``.
+        settings: The :class:`RetrackSettings` used, recorded alongside.
+    """
+    from panaf_ape_detection.pipeline.runner import write_detections_document
+    from panaf_ape_detection.types import TrackedFrameDetections
+
+    video = document["video"]
+    fps = float(video["fps"]) or 24.0
+    records = [
+        # TrackedFrameDetections, not FrameDetections: pydantic serialises to the
+        # *declared* field type, so the wrong container here silently drops every
+        # track_id -- the bug the type exists to prevent.
+        TrackedFrameDetections(
+            clip_id=clip_id,
+            frame_index=index,
+            frame_width=int(video["width"]),
+            frame_height=int(video["height"]),
+            timestamp_seconds=index / fps,
+            detections=tracked[index],
+        )
+        for index in sorted(tracked)
+    ]
+
+    write_detections_document(
+        destination,
+        clip_id=clip_id,
+        model=document.get("model", {}),
+        tracking={"enabled": True, "backend": "bytetrack", **settings.as_dict()},
+        video=video,
+        records=records,
+    )
+
+
 def _exit_without_the_inference_extra() -> typer.Exit:
     """Explain a missing ``supervision`` rather than showing an ImportError."""
     _error_console.print(
@@ -803,6 +859,13 @@ def track(
         Path | None,
         typer.Option("--metrics-dir", help="Write track metrics here instead of artifacts/."),
     ] = None,
+    write_detections: Annotated[
+        bool,
+        typer.Option(
+            "--write-detections",
+            help="Also write the tracker's refined boxes as a detections document.",
+        ),
+    ] = False,
 ) -> None:
     """Track saved detections and measure identity quality against ``ape_id``.
 
@@ -814,10 +877,16 @@ def track(
     Every override defaults to the configured value, so plain ``track`` measures
     exactly what ``detect`` would produce. ``--detections-dir`` and
     ``--metrics-dir`` keep an experiment from overwriting a baseline in place.
+
+    ``--write-detections`` also writes the tracker's *output* boxes, which are
+    not its input: short tracks have been dropped, gaps interpolated, positions
+    smoothed. Running ``evaluate`` over that directory measures the accuracy of
+    the tracked result rather than the detector's, and it is the artifact a
+    downstream stage such as pose estimation should consume.
     """
     import json as _json
 
-    from panaf_ape_detection.pipeline.retrack import RetrackSettings, load_clip, track_clips
+    from panaf_ape_detection.pipeline.retrack import RetrackSettings, load_clip, track_clip
 
     loaded = _load_or_exit(config)
     if not loaded.tracking.enabled:
@@ -846,28 +915,47 @@ def track(
         )
         raise typer.Exit(code=1)
 
+    destination_root = Path(metrics_dir) if metrics_dir else loaded.repository_paths().artifacts_dir
+    evaluations: list[ClipTrackEvaluation] = []
+
     try:
-        evaluations = track_clips(
-            ((source.clip_id, *load_clip(source)) for source in sources), settings
-        )
+        for source in sources:
+            document, truth = load_clip(source)
+            evaluation, tracked = track_clip(source.clip_id, document, truth, settings)
+            evaluations.append(evaluation)
+
+            destination = (
+                destination_root / "metrics" / TRACK_METRICS_SUBDIR / f"{source.clip_id}.json"
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(
+                _json.dumps(
+                    {**evaluation.as_dict(), **settings.as_dict()}, indent=2, sort_keys=True
+                ),
+                encoding="utf-8",
+            )
+
+            if write_detections:
+                _write_tracked_detections(
+                    destination_root / "detections" / f"{source.clip_id}.json",
+                    clip_id=source.clip_id,
+                    document=document,
+                    tracked=tracked,
+                    settings=settings,
+                )
     except ImportError as exc:
         raise _exit_without_the_inference_extra() from exc
-
-    destination_root = Path(metrics_dir) if metrics_dir else loaded.repository_paths().artifacts_dir
-    for evaluation in evaluations:
-        destination = (
-            destination_root / "metrics" / TRACK_METRICS_SUBDIR / f"{evaluation.clip_id}.json"
-        )
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(
-            _json.dumps({**evaluation.as_dict(), **settings.as_dict()}, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
 
     console.print(_track_table(evaluations))
     console.print(_TRACK_LEGEND)
     console.print(f"\n[dim]tracker {loaded.tracking.backend.value} · {settings.as_dict()}[/dim]")
     console.print(f"Track metrics: {destination_root / 'metrics' / TRACK_METRICS_SUBDIR}")
+    if write_detections:
+        console.print(f"Tracked boxes: {destination_root / 'detections'}")
+        console.print(
+            "[dim]`evaluate` over that directory measures the accuracy of the *tracked* "
+            "output, which is not the same as the detector's.[/dim]"
+        )
 
 
 @app.command("track-sweep")
