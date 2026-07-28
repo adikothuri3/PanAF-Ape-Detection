@@ -1,0 +1,48 @@
+# Stage 2 of the tracking sweep: settle the merge question around the candidate.
+#
+# Run against the 500-clip cache, with the candidate as the base config so it is
+# itself one of the arms:
+#
+#   panaf-phase1 track-sweep --grid configs/sweeps/around-candidate.yaml \
+#       --config configs/tracking-candidate.yaml \
+#       --detections-dir artifacts/full500/detections --jobs 4 --max-merges 59
+#
+# Why this grid exists. Validating on 500 clips (874 individuals) showed the
+# candidate winning almost everywhere -- identity coverage 0.7436 -> 0.8197, ID
+# switches 1910 -> 409, fragmentation 2.65 -> 1.30, jitter down 77% -- while
+# **tracks holding two or more apes rose from 59 to 79**, and purity fell
+# 0.9970 -> 0.9913. On the 10-clip sample merges had *improved*, so this only
+# appeared at scale.
+#
+# That is the one regression that matters, because merging two animals into one
+# track is the failure identity coverage can partly reward. `--max-merges 59`
+# holds the arms to the shipped tracker's merge count and asks what identity
+# coverage is still reachable underneath it.
+#
+# configs/sweeps/association.yaml swept activation over 0.10-0.30 and never beat
+# the candidate's 0.40 (best 0.8018 vs 0.8197), so the range moves up rather than
+# being re-tested. Everything here brackets the candidate, and the candidate's
+# own values are included so it competes against its neighbours.
+#
+# Costs no GPU. At the measured 24.6 s per arm over 500 clips, 72 arms is about
+# 30 minutes with --jobs 4.
+name: around-candidate
+
+axes:
+  # The candidate's 0.40, plus tighter and looser. Higher means only a stronger
+  # detection can open a new identity, which is what drove fragmentation down --
+  # but too high starts new tracks late and may hand an ape to a neighbour's.
+  activation_threshold: [0.35, 0.40, 0.45, 0.50]
+
+  # The most likely cause of the extra merges. A 4-second memory (120 at 30 fps
+  # is 96 frames at 24 fps) is long enough to re-attach a track to whichever
+  # animal is nearest when it reappears. Shorter should cost some fragmentation
+  # and buy back purity.
+  lost_track_buffer: [30, 60, 120]
+
+  # 0.9 is permissive. Tightening it demands a closer box match to associate,
+  # which is the other lever on merging.
+  minimum_matching_threshold: [0.7, 0.8, 0.9]
+
+  # Longer tracks survive the length filter; the candidate uses 8.
+  minimum_track_length: [8, 16]

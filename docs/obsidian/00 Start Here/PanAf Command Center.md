@@ -2,7 +2,7 @@
 tags: [command-center, start-here]
 status: active
 phase: "Phase 1 — See · steps 1-6 complete; cheap experiments before any fine-tuning"
-updated: 2026-07-27
+updated: 2026-07-28
 ---
 
 # PanAf Command Center
@@ -52,43 +52,48 @@ and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4
 
 ## Current Active Task
 
-**Validate the tracking candidate on the full dataset. One Colab session.**
+**Settle the merge regression, then adopt. One CPU sweep, no GPU.**
 
-Tracking has been rebuilt and tuned: **36 ID switches → 4**, fragmentation 2.57 → 1.13, jitter down
-82%, and coverage past the ceiling it was previously pinned to. Details: [[tracking]] and the
-2026-07-27 entry in the [log](../../../experiments/experiment_log.md).
+Tracking was validated on the full dataset — **500 clips, 874 individuals**. It holds:
+identity coverage 0.7436 → **0.8197**, ID switches 1910 → **409**, fragmentation 2.65 → **1.30**,
+jitter down 77%. Details in [[tracking]] and the 2026-07-28 log entry.
 
-**But it was tuned and measured on the same 10 clips**, which were purposively chosen to be hard.
-That is the circumstance under which a tuned result means least, so the settings sit in
-[`configs/tracking-candidate.yaml`](../../../configs/tracking-candidate.yaml) and **not** in
-`base.yaml`.
+Two honest caveats, both of which belong in the write-up:
 
-What to run — everything is already in place:
+1. **The margin shrank.** +11.1pp on the 10 tuning clips, **+7.6pp** on 500. About a third of the
+   apparent gain was overfitting; two thirds is real.
+2. **Merged tracks rose 59 → 79** (purity 0.9970 → 0.9913). This appeared only at scale — on the
+   10-clip sample merges had improved. It is the one metric that must not be traded away, because
+   merging two apes is the failure identity coverage can partly reward.
 
-1. `python scripts/fetch_panaf500.py --all` — all 500 clips, ~1.1 GB.
-2. `detect --config configs/colab-full500.yaml` — detector-only at confidence 0.05,
-   **~100 minutes on an A100** (measured: 121 s per 10 clips). Section 11 of the notebook does both.
-3. `track-sweep` on the dataset's own `train` split, confirm on `validation`, touch `test` **once**.
-4. Adopt into `base.yaml` + `colab.yaml` only if it holds, and report full-500 and hard-10 numbers
-   separately so the easier clips do not flatter it.
+What to run:
+
+```
+panaf-phase1 track-sweep --grid configs/sweeps/around-candidate.yaml \
+    --config configs/tracking-candidate.yaml \
+    --detections-dir artifacts/full500/detections --jobs 4 --max-merges 59
+```
+
+~30 minutes on CPU over the cache already on disk. If an arm clears the ceiling and keeps most of
+the gain, adopt it into `base.yaml` and `colab.yaml`. If none does, adopt the candidate and report
+the merge cost rather than choosing settings that hide it.
 
 ## Next Recommended Task
 
-**After validation: re-render the showcase clips, then Phase 2.**
+**After adoption: re-render the showcase clips, then Phase 2.**
 
-1. **Re-render 2–3 annotated clips** from the adopted settings. The smoothing is worth seeing — this
-   is the deliverable a reader actually watches.
-2. **Fine-tuning is now a weaker case than ever.** Tracking was the bottleneck and it was fixed with
-   configuration plus two post-processing steps; detection is the limit again, and the last variant
-   change closed most of that gap. Revisit only with evidence from the 500-clip run.
-3. **Phase 2 — Pose** becomes unblocked once tracks are trustworthy. Note the `interpolated` flag on
-   tracked detections: those boxes were synthesised to bridge detector gaps, and pose work must be
-   able to exclude them.
+1. **Re-render 2–3 annotated clips** from the adopted settings. Jitter fell 77% — this is the
+   deliverable a reader actually watches.
+2. **Phase 2 — Pose** is unblocked. It needed trustworthy tracks: you cannot build a movement
+   trajectory for an animal whose identity flips every few seconds. At 409 switches across 874
+   individuals, that is no longer the obstacle. Note the `interpolated` flag on tracked detections —
+   those boxes were synthesised to bridge detector gaps, and pose work must be able to exclude them.
+3. **Fine-tuning remains the weakest case yet.** Tracking was the bottleneck and configuration fixed
+   it. Detection is the limit again, and now measured over the whole dataset rather than 10 clips.
 
-The threshold question is reopened, in a useful way. 0.20 is the right threshold for *reporting*
-detection accuracy, but the tracking work found it is the wrong one for *running* the pipeline:
-detecting at 0.05 and letting the tracker discard the junk gives a tracked precision of 0.9556
-against 0.9308, at higher recall.
+The threshold question is reopened usefully. 0.20 is right for *reporting* single-frame detection
+accuracy; it is the wrong threshold for *running* the pipeline, because detecting at 0.05 and
+letting the tracker discard the junk gives better tracked precision at higher recall.
 
 ## Reading Progress
 

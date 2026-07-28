@@ -1094,3 +1094,74 @@ flatter the result.
 
 PanAf20K cannot extend this: only the 500-clip subset carries per-frame `ape_id`, so identity
 metrics are undefined on the rest, not merely expensive.
+
+---
+
+## 2026-07-28 — The tracking candidate validated on all 500 clips, and one regression it hid
+
+**Goal**
+Decide whether the tracker settings tuned on 10 clips are real, by measuring them on clips they
+were never tuned on. Colab A100, all 500 PanAf500 clips, detector-only at confidence 0.05, then
+both trackers over the same cache at no GPU cost.
+
+**Result** — 500 clips, **874 annotated individuals**:
+
+| | shipped | candidate |
+| --- | --- | --- |
+| Identity coverage | 0.7436 | **0.8197** |
+| Coverage | 0.8621 | 0.8709 |
+| ID switches | 1910 | **409** |
+| Fragmentation | 2.65 | **1.30** |
+| Track purity | 0.9970 | 0.9913 |
+| Tracks holding 2+ apes | 59 | **79** |
+| Jitter | 0.0161 | **0.0037** |
+| Mostly tracked | 640 | 670 |
+| Mostly lost | 59 | 65 |
+
+**It holds, and it was oversold.** The 10-clip margin was identity coverage +11.1pp
+(0.6449 → 0.7561). Over 500 clips it is **+7.6pp** (0.7436 → 0.8197). So roughly a third of the
+apparent gain was fitting the tuning set, and two thirds is real. ID switches fall 79% here against
+91% on the 10 clips. Both arms also score higher in absolute terms than on the 10-clip sample,
+which is the expected direction: those 10 were purposively selected to be hard, so they are not a
+random sample of anything.
+
+**The regression that only appeared at scale.** Tracks holding two or more apes went **59 → 79**
+and purity 0.9970 → 0.9913. As a rate that is worse than it reads: 59 of ~2316 shipped tracks
+(2.5%) against 79 of ~1136 candidate tracks (7.0%). On the 10-clip sample merges had *improved*,
+3 → 2, so nothing before this run hinted at it.
+
+This is the one metric that must not be traded away, because merging two animals into a single
+track is the failure identity coverage can partly *reward* -- both apes then count the merged track
+as their dominant one. The selection rule fixed before any of this was measured was "maximise
+identity coverage, subject to merges not exceeding baseline". **By that rule the candidate fails**,
+and the rule does not get dropped because the other nine numbers are good.
+
+**The sweep was inconclusive, and said so.** 108 arms, 2654.8 s (24.58 s per arm over 500 clips).
+The command reported *"the configured settings are not among the arms"* -- correctly: the grid
+swept activation over 0.10-0.30 while the candidate uses 0.40, so the candidate was never an arm
+and there was no reference point. One thing is still established: **no arm in that range beat it**,
+best 0.8018 against the candidate's 0.8197. Activation 0.40 is better than anything below it.
+
+**Changes made in response**
+
+- `track-sweep --max-merges N` rejects arms above a merge ceiling instead of merely printing the
+  column. Enforcing the stated rule by eye is how it gets quietly dropped.
+- `configs/sweeps/around-candidate.yaml` brackets the candidate rather than re-testing a range
+  already ruled out: activation 0.35-0.50, buffer 30/60/120, match 0.7-0.9, minimum track length
+  8/16 -- with the candidate itself as an arm, so it competes against its neighbours.
+
+**Interpretation**
+
+Tracking is no longer the bottleneck. 409 switches across 874 individuals, fragmentation 1.30, and
+coverage 0.8709 against detection recall on this cache -- the tracker now recovers most of what the
+detector finds, and the smoothing is measurable rather than cosmetic (jitter down 77%).
+
+What remains is a purity question, not a coverage one: whether some setting near the candidate
+keeps most of the +7.6pp while holding merged tracks at or below the shipped 59. That is a CPU
+sweep over the cache already on disk, not another GPU run.
+
+**Next action**
+Run `configs/sweeps/around-candidate.yaml` against the 500-clip cache with `--max-merges 59`
+(~30 min, no GPU). If an arm clears the ceiling and keeps most of the gain, adopt that into
+`base.yaml` and `colab.yaml`. If none does, adopt the candidate anyway and **report the merge
+regression in the write-up as a cost**, rather than choosing settings that hide it.
