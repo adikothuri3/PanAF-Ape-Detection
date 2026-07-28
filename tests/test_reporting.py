@@ -21,6 +21,7 @@ import pytest
 from panaf_ape_detection.reporting import (
     TRACK_METRICS_SUBDIR,
     PooledCounts,
+    detection_cache_settings,
     format_recall_table,
     latest_run_metadata,
     load_detection_metrics,
@@ -453,3 +454,74 @@ def test_records_predating_the_identity_fields_do_not_claim_perfect_identity(tmp
     assert pooled.identity_coverage == 0.0
     assert pooled.purity_count == 0
     assert pooled.track_purity == 1.0
+
+
+# --------------------------------------------------------------------------- #
+# detection_cache_settings -- catching a cache that is secretly a mixture
+# --------------------------------------------------------------------------- #
+
+
+def detections_doc(clip_id: str, *, variant="MDV6-yolov10-e", confidence=0.05, tracked=False):
+    return {
+        "clip_id": clip_id,
+        "model": {"name": "MegaDetectorV6", "variant": variant, "confidence_threshold": confidence},
+        "tracking": {"enabled": tracked, "backend": "bytetrack" if tracked else None},
+        "video": {"width": 720, "height": 404, "fps": 24.0, "frame_count": 1},
+        "frames": [],
+    }
+
+
+def test_a_consistent_cache_reports_one_setting(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    for clip in ("clip-a", "clip-b", "clip-c"):
+        write(root / "detections" / f"{clip}.json", detections_doc(clip))
+
+    found = detection_cache_settings(root)
+
+    assert len(found) == 1
+    assert next(iter(found.values())) == 3
+
+
+def test_a_mixed_cache_is_detected(tmp_path: Path):
+    """The failure this exists for: two configs writing to one directory.
+
+    Every file is individually valid, and a resumed run *skips* whichever clips
+    are already present -- so the wrong-threshold ones are never corrected and
+    the pooled number describes no single run.
+    """
+    root = tmp_path / "artifacts"
+    for clip in ("clip-a", "clip-b"):
+        write(root / "detections" / f"{clip}.json", detections_doc(clip))
+    # What the 10-clip demo config would leave behind: tracked, at 0.20.
+    write(
+        root / "detections" / "clip-c.json",
+        detections_doc("clip-c", confidence=0.2, tracked=True),
+    )
+
+    found = detection_cache_settings(root)
+
+    assert len(found) == 2, "a mixed cache must not look consistent"
+    assert sorted(found.values()) == [1, 2]
+
+
+def test_mixed_variants_are_distinguished(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    write(root / "detections" / "a.json", detections_doc("a", variant="MDV6-yolov10-e"))
+    write(root / "detections" / "b.json", detections_doc("b", variant="MDV6-yolov9-c"))
+
+    assert len(detection_cache_settings(root)) == 2
+
+
+def test_an_empty_cache_reports_nothing(tmp_path: Path):
+    assert detection_cache_settings(tmp_path / "artifacts") == {}
+
+
+def test_settings_describe_themselves_for_a_report(tmp_path: Path):
+    root = tmp_path / "artifacts"
+    write(root / "detections" / "a.json", detections_doc("a", confidence=0.05, tracked=False))
+
+    described = next(iter(detection_cache_settings(root))).describe()
+
+    assert "MDV6-yolov10-e" in described
+    assert "0.05" in described
+    assert "detector-only" in described
