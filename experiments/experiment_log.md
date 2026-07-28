@@ -1165,3 +1165,97 @@ Run `configs/sweeps/around-candidate.yaml` against the 500-clip cache with `--ma
 (~30 min, no GPU). If an arm clears the ceiling and keeps most of the gain, adopt that into
 `base.yaml` and `colab.yaml`. If none does, adopt the candidate anyway and **report the merge
 regression in the write-up as a cost**, rather than choosing settings that hide it.
+
+---
+
+## 2026-07-28 (later) — Settings chosen on 500 clips, adopted, and two corrections to this repo
+
+**Goal**
+Settle the merge regression the full-dataset validation exposed, then adopt and write up. All of it
+local: the only thing that needed a GPU was detection, and that was finished.
+
+**Method**
+Brought the Colab run home — 500 detections, 500 detection metrics, 500 tracking metrics per arm,
+84 MB zipped. Verified before using it:
+
+- `detection_cache_settings` reported **exactly one** setting over 500 clips,
+  `MDV6-yolov10-e @ conf 0.05, detector-only`. The cache is not a mixture.
+- `pooled_track_metrics` over both arms **reproduced the pasted table exactly** — identity coverage
+  0.8197, 409 switches, 79 merged tracks, 874 individuals. The numbers already in this log and in
+  `tracking.md` were read off a chat paste rather than a file, so this was the check that decided
+  whether they stood. They stood.
+- Re-running the candidate locally reproduced Colab to four decimal places.
+
+Then a 72-arm sweep bracketing the candidate, `--max-merges 59`, 17.7 minutes on 8 cores.
+
+**Result** — 46 of 72 arms cleared the ceiling, and the best beat the candidate outright, so the
+agreed fallback (ship the candidate, report its regression) was not needed. Adopted: activation
+0.45, buffer 120, match 0.8, minimum track length 8, score floor 0.11, interpolate 24, smooth 5.
+
+|                          | legacy | adopted |
+| ---                      | ---    | ---     |
+| identity coverage        | 0.7397 | 0.8230  |
+| ID switches              | 2257   | 301     |
+| fragmentation            | 2.48   | 1.27    |
+| tracks holding 2+ apes   | 57     | 56      |
+| jitter                   | 0.0153 | 0.0035  |
+| tracked F1               | 0.8212 | 0.8570  |
+
+`base.yaml` reproduces the winning arm exactly across all nine metrics.
+
+**I predicted the wrong cause.** The grid comment said the long `lost_track_buffer` was the likely
+source of the extra merged tracks. It is not. Mean merged tracks across the sweep:
+
+| `minimum_matching_threshold` | 0.7 | 0.8 | 0.9 |
+| --- | --- | --- | --- |
+| mean merged tracks | 46.7 | 54.9 | 71.9 |
+
+Buffer 30 → 120 moves them by about three. Permissive **association** fuses two animals; a long
+memory does not. The candidate's 0.9 was the entire problem, and it came from a 10-clip sweep.
+
+**Two corrections to things this repository asserted**
+
+1. **The detector does not peak at confidence 0.20.** Over 500 clips single-frame F1 runs 0.621 /
+   0.793 / 0.825 / **0.835** / 0.825 / 0.801 / 0.762 at 0.05 / 0.20 / 0.30 / 0.40 / 0.50 / 0.60 /
+   0.70. The peak is 0.40. The old claim was wrong twice: it came from 10 purposively-hard clips,
+   *and* from a run with tracking enabled, so `drop_short_tracks` had already deleted false
+   positives before the detector was scored. Corrected in `base.yaml` and `colab.yaml`; the earlier
+   log entries and check-in notes are left as the record of what was believed at the time.
+2. **The pipeline beats any threshold.** Tracked output at confidence 0.05 gives P 0.8547 /
+   R 0.8593 / F1 0.8570, against 0.7940 / 0.8504 / 0.8212 for the 0.20 pipeline and a 0.8349
+   ceiling for the best single-frame threshold. So the detector threshold is now 0.05 — not because
+   0.05 is a good threshold (raw precision there is 0.4683) but because the tracker is a better
+   filter than a threshold, using temporal consistency a per-frame cut cannot see.
+
+**Failures, now characterised over 201,430 boxes rather than 4,985**
+
+`sitting_on_back` 0.207 · `climbing_up` 0.603 · `climbing_down` 0.646 · `hanging` 0.729 ·
+`camera_interaction` 0.805 · `walking` 0.850 · `sitting` 0.898 · `standing` 0.900 · `running` 0.913.
+By size: small 0.711, medium 0.925, large 0.929. Occlusion and scale, as predicted — but measured.
+
+**What it cost**
+Nine more apes mostly-lost (65 → 74) and `sitting_on_back` down 0.227 → 0.207, both from the strict
+activation threshold: a faint animal never reaches the 0.55 needed to open an identity.
+
+**Dead ends and friction**
+
+- The zip of Drive's `artifacts/` contained the *whole* tree, including `detections/` and
+  `metrics/`. Extracting it wholesale would have clobbered the 10-clip baseline; only the three
+  `full500*` directories were unpacked.
+- The cache was unusable at first. Every cache-reading command took its clip list from the manifest,
+  and the local manifest lists 10 clips — so re-tracking 500 would have meant inventing manifest
+  rows, checksums included, for videos never downloaded. `--detections-dir` already names the clips;
+  it now suffices, with `--annotations-dir` alongside.
+- `--max-merges` was filtering arms out of the saved record as well as the ranking, which would have
+  thrown away the trade-off curve this entry is built on. Fixed to filter only the ranking.
+- `restore_frames` silently dropped `TrackedDetection.interpolated` on read — written as `true`,
+  returned as `False`. Every synthesised box would have looked like a real detection to anything
+  reading the file, making the Phase 2 guarantee worthless. Caught by a round-trip test.
+- Ultralytics prints one line per frame (`0: 1280x1280 ...`), 180,000 lines for a 500-clip run. It
+  buried the pipeline's own progress reporting and is a plausible contributor to the Colab session
+  drops. Silenced.
+
+**Next action**
+Phase 1 is complete: `reports/phase1_findings_2026-07-28.md` is the write-up, and showcase clips are
+rendered from the adopted config. Phase 2 (pose) is unblocked — note the `interpolated` flag, since
+those boxes have no image evidence under them.

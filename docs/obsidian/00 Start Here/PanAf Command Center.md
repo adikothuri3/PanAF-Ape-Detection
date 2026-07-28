@@ -14,86 +14,56 @@ updated: 2026-07-28
 
 ## Current Status
 
-🟢 **Full Phase 1 pipeline working and measured on all 10 clips.**
+🟢 **Phase 1 "See" is complete, and measured on the entire dataset.**
 
-Detection, tracking, overlay, video export and evaluation all run end to end. Tests and checks are
-green (**281 tests, 19 verification checks**). The repo is published at
-[adikothuri3/PanAF-Ape-Detection](https://github.com/adikothuri3/PanAF-Ape-Detection).
+All **500 PanAf500 clips / ~180,000 frames / 201,430 annotated boxes / 874 annotated individuals**.
 
-**All 10 clips, 3600 frames, 4985 annotated apes**, confidence 0.20 / IoU 0.50, verified `mps:0`,
-using the current default `MDV6-yolov10-e` with ByteTrack:
-
-| | Precision | Recall | F1 | Pooled mean IoU |
+| | Precision | Recall | F1 | Mean IoU |
 |---|---|---|---|---|
-| **Current (`MDV6-yolov10-e`)** | **0.931** | **0.715** | **0.809** | 0.852 |
-| Previous (`MDV6-yolov9-c`) | 0.917 | 0.353 | 0.509 | 0.832 |
+| Best single-frame threshold (0.40) | 0.864 | 0.808 | 0.835 | — |
+| Pipeline before 2026-07-28 | 0.794 | 0.850 | 0.821 | 0.837 |
+| **Pipeline as shipped** | **0.855** | **0.859** | **0.857** | 0.838 |
 
-3564 of 4985 apes found, 265 false positives. Tracking as shipped: 54 tracks over 23 individuals,
-36 ID switches, **coverage 0.715**, 13 mostly-tracked, only 2 mostly-lost (was 9).
+Tracking: **301 ID switches** (was 2257), fragmentation **1.27** (was 2.48), identity coverage
+**0.823** (was 0.740), jitter down **77%**, 645 of 874 apes mostly-tracked.
 
-**Tracking coverage equalled detection recall to four decimal places (0.7149 vs 0.7149)** — every
-detected ape was already tracked, and no track ever covered a frame the detector missed. Coverage
-could not be improved by tuning; only identity could. That finding drove the tracking work below,
-which has a candidate at **4 ID switches** pending validation on the full dataset. See [[tracking]].
+**The pipeline is more accurate than any confidence threshold can be.** It detects generously at
+0.05 — raw precision there is 0.468 — and lets the tracker discard what does not persist. That
+beats the 0.835 F1 ceiling of the best single-frame operating point, because temporal consistency
+is evidence a per-frame cut cannot use.
 
-Four clips are now above 0.95 recall, including the infrared night clip (0.963) that scored **0.009**
-when this project started. The remaining weak spots are `isfRigsIjO` (0.211 recall, near-darkness --
-though precision is 1.000, so what it does find is right) and `zvwY5xoIli` (0.348, small distant
-subjects).
+What still fails is occlusion and scale: `sitting_on_back` 0.207, arboreal postures 0.60–0.73,
+small subjects 0.711 against 0.93 for medium and large.
 
-Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-26.md).
+Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-28.md). Tracking detail:
+[[tracking]].
 
 ## Current Phase
 
-**[[Four Phase Arc|Phase 1 — See]]**, all six steps complete.
-
-Detect and track great apes in PanAf500 camera-trap video, overlay the dataset's behaviour labels,
-and write up what you find. The full arc is 1 See → 2 Pose → 3 Predict → 4 Embody.
+**[[Four Phase Arc|Phase 1 — See]]**, all six steps complete, measured on the whole dataset.
 
 ## Current Active Task
 
-**Settle the merge regression, then adopt. One CPU sweep, no GPU.**
+**None. Phase 1 is closed.**
 
-Tracking was validated on the full dataset — **500 clips, 874 individuals**. It holds:
-identity coverage 0.7436 → **0.8197**, ID switches 1910 → **409**, fragmentation 2.65 → **1.30**,
-jitter down 77%. Details in [[tracking]] and the 2026-07-28 log entry.
-
-Two honest caveats, both of which belong in the write-up:
-
-1. **The margin shrank.** +11.1pp on the 10 tuning clips, **+7.6pp** on 500. About a third of the
-   apparent gain was overfitting; two thirds is real.
-2. **Merged tracks rose 59 → 79** (purity 0.9970 → 0.9913). This appeared only at scale — on the
-   10-clip sample merges had improved. It is the one metric that must not be traded away, because
-   merging two apes is the failure identity coverage can partly reward.
-
-What to run:
-
-```
-panaf-phase1 track-sweep --grid configs/sweeps/around-candidate.yaml \
-    --config configs/base.yaml \
-    --detections-dir artifacts/full500/detections --jobs 4 --max-merges 59
-```
-
-~30 minutes on CPU over the cache already on disk. If an arm clears the ceiling and keeps most of
-the gain, adopt it into `base.yaml` and `colab.yaml`. If none does, adopt the candidate and report
-the merge cost rather than choosing settings that hide it.
+The deliverables are in place: a public repo, annotated showcase clips rendered from the shipped
+config, and a write-up whose every number traces to a file under `artifacts/`.
 
 ## Next Recommended Task
 
-**After adoption: re-render the showcase clips, then Phase 2.**
+**Phase 2 — Pose.** It was blocked on trustworthy tracks: you cannot build a movement trajectory
+for an animal whose identity flips every few seconds. At 301 switches across 874 individuals and
+fragmentation 1.27, that is no longer the obstacle.
 
-1. **Re-render 2–3 annotated clips** from the adopted settings. Jitter fell 77% — this is the
-   deliverable a reader actually watches.
-2. **Phase 2 — Pose** is unblocked. It needed trustworthy tracks: you cannot build a movement
-   trajectory for an animal whose identity flips every few seconds. At 409 switches across 874
-   individuals, that is no longer the obstacle. Note the `interpolated` flag on tracked detections —
-   those boxes were synthesised to bridge detector gaps, and pose work must be able to exclude them.
-3. **Fine-tuning remains the weakest case yet.** Tracking was the bottleneck and configuration fixed
-   it. Detection is the limit again, and now measured over the whole dataset rather than 10 clips.
+One thing to carry forward: tracked detections may be flagged `interpolated`. Those boxes were
+synthesised to bridge frames the detector missed — they are the only reason coverage can exceed
+detection recall — and there is **no image evidence underneath them**. Pose work must be able to
+exclude them, which is why the flag exists.
 
-The threshold question is reopened usefully. 0.20 is right for *reporting* single-frame detection
-accuracy; it is the wrong threshold for *running* the pipeline, because detecting at 0.05 and
-letting the tracker discard the junk gives better tracked precision at higher recall.
+If detection is revisited before then, §7 of the write-up is the table to improve, and
+`sitting_on_back` at 0.207 recall is where the headroom is. The case for fine-tuning is weaker than
+it looked a week ago: tracking was the bottleneck, and configuration fixed it without training
+anything.
 
 ## Reading Progress
 

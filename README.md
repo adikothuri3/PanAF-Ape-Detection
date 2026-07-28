@@ -17,22 +17,26 @@ inference, confidence filtering, **ByteTrack tracking**, behaviour-label overlay
 export, and **accuracy and track quality measured against the dataset's ground-truth boxes and
 `ape_id`**.
 
-Measured on **all 10 clips / 3600 frames / 4985 annotated boxes** at confidence 0.20 and IoU 0.50,
-on verified Apple MPS:
+Measured on **all 500 PanAf500 clips / ~180,000 frames / 201,430 annotated boxes / 874 annotated
+individuals** at IoU 0.50 — the entire densely-annotated subset, on a verified Colab A100:
 
 | | Precision | Recall | F1 | Pooled mean IoU |
 |---|---|---|---|---|
-| Detector only | 0.874 | 0.386 | 0.536 | 0.825 |
-| + ByteTrack | **0.917** | 0.353 | 0.509 | 0.832 |
+| Best single-frame threshold (0.40) | 0.864 | 0.808 | 0.835 | — |
+| Pipeline before 2026-07-28 | 0.794 | 0.850 | 0.821 | 0.837 |
+| **Pipeline as shipped** | **0.855** | **0.859** | **0.857** | 0.838 |
 
-Tracking: 23 annotated individuals, 29 predicted tracks, **17 ID switches**, mean fragmentation
-**1.35**, coverage 0.353.
+Tracking, over 874 individuals: **301 ID switches** (was 2257), fragmentation **1.27** (was 2.48),
+identity coverage **0.823** (was 0.740), box jitter down **77%**.
 
-**Precise but insensitive**, and the failure is concentrated in **low-contrast footage** — night,
-infrared, deep shade, blown-out backlight — with arboreal posture and small subject size as
-correlates rather than causes. See [the findings write-up](reports/phase1_findings_2026-07-26.md)
-for the full breakdown, including two conclusions from an earlier 3-clip run that the full sample
-overturned.
+The shipped pipeline is **more accurate than any confidence threshold can be**. It detects
+generously at 0.05 — where raw precision is only 0.468 — and lets the tracker discard what does not
+persist. Temporal consistency is evidence a per-frame threshold cannot use.
+
+What still fails is **occlusion and scale**: `sitting_on_back` at 0.207 recall, the arboreal
+postures at 0.60–0.73, and small subjects at 0.711 against 0.93 for medium and large. See
+[the findings write-up](reports/phase1_findings_2026-07-28.md) for the full breakdown, including
+what a third of the tracking gain turned out to be worth once it was tested on unseen clips.
 
 No fine-tuning has been done; this phase exists to produce the evidence for that decision.
 
@@ -377,12 +381,14 @@ Working checklist:
 - **MegaDetector is not an ape detector.** It is a general animal/person/vehicle detector; the
   `animal` class covers everything from a chimpanzee to a duiker. It cannot tell you which species,
   which individual, or what the animal is doing.
-- **Accuracy headlines are reported at one operating point** — confidence 0.20, IoU 0.50 — stated
-  with the numbers. Confidence *has* now been swept (0.05–0.50); IoU has not, and no mAP is claimed.
-  F1 peaks at the lowest threshold tested, so `configs/base.yaml` is not the best operating point,
-  only the documented one.
-- **Small, non-random sample.** 5–10 hand-picked clips cannot support claims about the dataset as a
-  whole. Selection bias is expected and should be described in the write-up.
+- **IoU is fixed at 0.50 and no mAP is claimed.** Confidence has been swept across 0.05–0.70 on the
+  full dataset; IoU has not.
+- **One corpus.** PanAf500 is 14 field sites and one camera-trap setup. Nothing here shows the
+  settings transfer to other footage — and PanAf20K cannot extend it, because only this 500-clip
+  subset carries the per-frame `ape_id` that tracking is scored against.
+- **A third of the tracking gain was overfitting.** Settings tuned on 10 clips looked worth +11.1pp
+  of identity coverage; on all 500 they were worth +7.6pp. The shipped settings were then re-chosen
+  on the full dataset.
 - **Track quality is measured with a small metric set** — ID switches, fragmentation and coverage
   against `ape_id`. MOTA and IDF1 are *not* implemented rather than half-implemented, because a
   metric nobody has hand-checked is not a measurement.
