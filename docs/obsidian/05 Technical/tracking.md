@@ -133,6 +133,24 @@ length 8, score floor 0.11, interpolation up to 24 frames, 5-frame smoothing, st
   2.57 → 2.00) but changes nothing at these settings, because the 4-second buffer already
   reconnects the same fragments with a motion model rather than a repair afterwards. Ships off.
 
+### Held out
+
+PanAf500 ships a 400 / 25 / 75 train / validation / test split. Re-running the selection on the
+training clips alone picks **exactly the same settings**, so the choice did not depend on seeing
+the test clips. On those 75 held-out clips (137 apes):
+
+| | legacy | adopted |
+| --- | --- | --- |
+| Identity coverage | 0.7641 | **0.8612** |
+| ID switches | 342 | **60** |
+| Fragmentation | 2.50 | **1.28** |
+| Merged tracks | 5 | 9 |
+
+The identity gain is **larger** on held-out data than on train (+9.7pp against +7.7pp). The merge
+count is not: it fell 48 → 39 on train but rose 5 → 9 on test and 4 → 8 on validation. The
+aggregate 57 → 56 was carried by the training split, and the honest reading is that the regression
+was fixed where it was tuned and roughly tripled in rate where it was not.
+
 ### What it cost
 
 Nine more apes are mostly lost, 65 → 74. Activation 0.45 is strict, so a faint animal that never

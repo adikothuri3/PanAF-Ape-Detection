@@ -219,6 +219,40 @@ expected; the value is in having them quantified over 201,430 boxes rather than 
 
 ---
 
+## 7b. Held out: the dataset's own splits
+
+PanAf500 ships a split — **400 train / 25 validation / 75 test** — and everything above pools all
+500 clips. The tracker settings were selected by a sweep that saw all of them, so those pooled
+figures are not a held-out estimate.
+
+Re-running the selection on the **400 training clips only**, under a merge ceiling recomputed on
+train alone, picks **exactly the same settings**: activation 0.45, buffer 120, matching 0.8,
+minimum track length 8. The choice never depended on seeing the test clips, so the test numbers
+below are a fair estimate of settings that would have been chosen without them.
+
+| split | | identity coverage | ID switches | fragmentation | merged tracks | jitter |
+| --- | --- | --- | --- | --- | --- | --- |
+| **train** (400 clips, 677 apes) | legacy | 0.7425 | 1709 | 2.41 | 48 | 0.0156 |
+| | adopted | **0.8198** | **201** | **1.26** | **39** | **0.0036** |
+| **validation** (25 clips, 60 apes) | legacy | 0.6567 | 206 | 3.30 | 4 | 0.0183 |
+| | adopted | **0.7733** | **40** | **1.45** | 8 | **0.0042** |
+| **test** (75 clips, 137 apes) | legacy | 0.7641 | 342 | 2.50 | 5 | 0.0129 |
+| | adopted | **0.8612** | **60** | **1.28** | 9 | **0.0030** |
+
+**The identity result holds, and is strongest on held-out data.** On the 75 test clips identity
+coverage improves by **+9.7pp** against +7.7pp on train, and ID switches fall 82%.
+
+> [!warning] The merge regression did not fully disappear on unseen data
+> In aggregate merged tracks went 57 → 56, which cleared the ceiling. That was carried by the
+> training split, where they fell 48 → 39. On the held-out splits they rose: **5 → 9 on test and
+> 4 → 8 on validation.**
+>
+> As a rate on test that is 1.5% of tracks before against 5.1% after — a tripling, on small absolute
+> counts (9 of roughly 175 tracks). So the honest statement is not "the regression was fixed" but
+> "it was fixed on the data it was tuned against, and roughly tripled in rate on data that was not".
+> The identity gain is large enough that the trade is still clearly worth making, and the numbers
+> are here so a reader can disagree.
+
 ## 8. Honest limitations
 
 **A third of the tracking gain was overfitting.** The settings were first tuned on 10 clips, where
@@ -231,6 +265,14 @@ re-chosen on the full dataset and give +8.3pp.
 
 **One corpus.** PanAf500 is 14 field sites and one camera-trap setup. Nothing here shows the
 settings transfer to other footage.
+
+**No training was done here, but MegaDetector's own training data is not fully public.** This
+project runs pretrained inference only — no optimiser, no gradients, nothing fitted to these clips.
+Whether PanAf footage appeared in the corpus MegaDetector V6 was originally trained on cannot be
+verified from the published material, so it cannot be ruled out. If it did, the detection numbers
+would be optimistic in a way no split of this dataset can detect. The *tracking* results are
+unaffected either way: the tracker is not a learned model, and its settings were chosen here, on
+data whose split is known.
 
 **PanAf20K cannot extend this.** It is ~20,000 videos, but only this 500-clip subset carries
 per-frame boxes and `ape_id` identities. Without identity ground truth, ID switches and
