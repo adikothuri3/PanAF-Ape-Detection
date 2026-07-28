@@ -113,6 +113,34 @@ class MegaDetectorV6Runner:
             raise ValueError(msg) from exc
 
         self._force_device()
+        self._silence_per_frame_logging()
+
+    def _silence_per_frame_logging(self) -> None:
+        """Stop Ultralytics printing one line per frame.
+
+        Its predictor does ``if self.args.verbose: LOGGER.info(...)`` once per
+        batch, which here is once per *frame*::
+
+            0: 1280x1280 1 animal, 45.2ms
+
+        Harmless at ten frames and a serious problem at scale: a 500-clip run is
+        180,000 lines. They bury the pipeline's own progress reporting, and a
+        Colab cell holding that much output slows the browser badly and is a
+        plausible contributor to a dropped session. Nothing reads these lines --
+        per-frame timing is recorded in run metadata instead.
+
+        Both levers are set. ``args.verbose`` is the one that stops the line
+        above, and the logger level covers anything else the library decides to
+        print during a long run.
+        """
+        import logging as _logging
+
+        predictor = getattr(self._model, "predictor", None)
+        arguments = getattr(predictor, "args", None)
+        if arguments is not None:
+            arguments.verbose = False
+
+        _logging.getLogger("ultralytics").setLevel(_logging.WARNING)
 
     def _force_device(self) -> None:
         """Move the weights onto the resolved device and verify they arrived.

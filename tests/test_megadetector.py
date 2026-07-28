@@ -12,6 +12,7 @@ constructor downloads about a gigabyte of weights.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from panaf_ape_detection.inference.megadetector import (
@@ -84,3 +85,47 @@ def test_the_recorded_library_default_matches_what_the_library_uses():
 
     signature = inspect.signature(yolov8_base.YOLOV8Base.single_image_detection)
     assert signature.parameters["det_conf_thres"].default == DEFAULT_DETECTION_THRESHOLD
+
+
+# --------------------------------------------------------------------------- #
+# Per-frame logging -- silenced, because 500 clips is 180,000 lines
+# --------------------------------------------------------------------------- #
+
+
+class _Args:
+    """Stands in for the Ultralytics predictor's parsed arguments."""
+
+    def __init__(self) -> None:
+        self.verbose = True
+
+
+class _Predictor:
+    def __init__(self) -> None:
+        self.args = _Args()
+
+
+def test_ultralytics_per_frame_logging_is_turned_off():
+    """`0: 1280x1280 1 animal, 45.2ms`, once per frame, is 180,000 lines at 500 clips.
+
+    It buries the pipeline's own progress reporting, and a Colab cell holding
+    that much output slows the browser badly.
+    """
+    runner = object.__new__(MegaDetectorV6Runner)
+    model = _RecordingModel()
+    model.predictor = _Predictor()  # type: ignore[attr-defined]
+    runner._model = model  # type: ignore[attr-defined]
+
+    runner._silence_per_frame_logging()  # type: ignore[attr-defined]
+
+    assert model.predictor.args.verbose is False  # type: ignore[attr-defined]
+    assert logging.getLogger("ultralytics").level >= logging.WARNING
+
+
+def test_silencing_survives_a_model_with_no_predictor_yet():
+    """The predictor is built lazily, so it may legitimately not exist."""
+    runner = object.__new__(MegaDetectorV6Runner)
+    runner._model = _RecordingModel()  # type: ignore[attr-defined]
+
+    runner._silence_per_frame_logging()  # type: ignore[attr-defined]
+
+    assert logging.getLogger("ultralytics").level >= logging.WARNING
