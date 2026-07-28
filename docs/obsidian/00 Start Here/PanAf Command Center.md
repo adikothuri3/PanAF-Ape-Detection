@@ -35,6 +35,12 @@ is evidence a per-frame cut cannot use.
 What still fails is occlusion and scale: `sitting_on_back` 0.207, arboreal postures 0.60–0.73,
 small subjects 0.711 against 0.93 for medium and large.
 
+**On the dataset's own 75 held-out test clips**, where re-running the selection on train alone
+picks the same settings: identity coverage 0.7641 → **0.8612**, ID switches 342 → **60**. The
+identity gain is larger there than on train. Merged tracks went the other way on held-out data
+(5 → 9 on test, 4 → 8 on validation) even though the aggregate improved — that is in the write-up
+rather than smoothed over.
+
 Full analysis: [findings write-up](../../../reports/phase1_findings_2026-07-28.md). Tracking detail:
 [[tracking]].
 
