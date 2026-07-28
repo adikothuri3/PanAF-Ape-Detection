@@ -217,3 +217,66 @@ def test_progress_is_logged_for_every_clip(
     assert progress[1].startswith("[2/2] clip-b")
     # The counter is what makes a resumed run legible, so it must be in the line.
     assert "100% done" in progress[1]
+
+
+def test_the_detect_path_applies_the_configured_refinement(
+    repository: tuple[Path, Path], config_data: dict[str, Any], write_config
+):
+    """`detect` must run the same finishing chain `track` does.
+
+    It did not. Stitching, interpolation and smoothing lived only on the
+    re-tracking path, so every *measurement* went through them while every
+    *artifact* -- the detections cache, the annotated video -- did not. The
+    refinement settings in the config were accepted, validated, and silently
+    ignored by the command that produces the deliverables.
+    """
+    import json
+
+    config_path, artifacts = repository
+    config = load_config(config_path, use_env_overrides=False)
+    data = json.loads(config_path.read_text()) if config_path.suffix == ".json" else None
+    assert data is None  # the fixture writes YAML; keep mypy and readers honest
+
+    # Re-write the config with tracking on and a gap worth filling.
+    config_data["data"]["manifest_path"] = str(config.data.manifest_path)
+    config_data["data"]["max_clips"] = 2
+    config_data["paths"]["raw_data_dir"] = str(config.paths.raw_data_dir)
+    config_data["paths"]["artifacts_dir"] = str(artifacts)
+    config_data["video"]["write_annotated"] = False
+    config_data["tracking"] = {
+        "enabled": True,
+        "backend": "bytetrack",
+        "minimum_track_length": 1,
+        "activation_threshold": 0.1,
+        "lost_track_buffer": 30,
+        "minimum_matching_threshold": 0.8,
+        "minimum_consecutive_frames": 1,
+        "score_floor": None,
+        "stitch_max_gap": 0,
+        "stitch_max_distance": 1.0,
+        "interpolate_max_gap": 5,
+        "smooth_window": 3,
+    }
+    refined = load_config(write_config(config_data, "refined.yaml"), use_env_overrides=False)
+
+    class _Blinking(StubDetector):
+        """Finds the ape except on frame 2, so there is a gap to interpolate."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._frame = -1
+
+        def detect(self, _frame: Any) -> list[Detection]:
+            self._frame = (self._frame + 1) % FRAMES
+            if self._frame == 2:
+                self.calls += 1
+                return []
+            return super().detect(_frame)
+
+    run_manifest(refined, _Blinking(), verify=True)
+
+    document = json.loads((artifacts / "detections" / "clip-a.json").read_text())
+    boxes = [d for f in document["frames"] for d in f["detections"]]
+    assert any(d.get("interpolated") for d in boxes), (
+        "detect produced no interpolated boxes, so the configured interpolate_max_gap was ignored"
+    )

@@ -92,57 +92,63 @@ once. Coverage minus identity coverage is the fragmentation tax.
 - **Smoothing** is a symmetric centred average. Symmetry matters: a one-sided window at the ends of
   a track would drag the first and last boxes inward and bend straight motion.
 
-## Measured results — validated on all 500 clips
+## Measured results — the whole dataset
 
-Tuned on 10 clips, then measured on the whole dataset: **500 clips, 874 annotated individuals**,
-detector-only cache at confidence 0.05. Shipped settings versus
-[`configs/tracking-candidate.yaml`](../../../configs/tracking-candidate.yaml):
+Chosen by a 72-arm sweep over all **500 clips / 874 annotated individuals**, ranked by identity
+coverage under a hard ceiling on merged tracks. 46 arms cleared the ceiling; the best is what
+`configs/base.yaml` now ships. `configs/tracking-legacy.yaml` holds the settings it replaced, so
+the comparison stays reproducible.
 
-| | shipped | candidate |
+| | legacy | adopted |
 | --- | --- | --- |
-| Identity coverage | 0.7436 | **0.8197** |
-| Coverage | 0.8621 | 0.8709 |
-| ID switches | 1910 | **409** |
-| Fragmentation | 2.65 | **1.30** |
-| Track purity | 0.9970 | 0.9913 |
-| Tracks holding 2+ apes | 59 | **79** |
-| Jitter | 0.0161 | **0.0037** |
-| Mostly tracked | 640/874 | 670/874 |
-| Mostly lost | 59/874 | 65/874 |
+| Identity coverage | 0.7397 | **0.8230** |
+| Coverage | 0.8504 | 0.8593 |
+| ID switches | 2257 | **301** |
+| Fragmentation | 2.48 | **1.27** |
+| Track purity | 0.9969 | 0.9944 |
+| Tracks holding 2+ apes | 57 | 56 |
+| Jitter | 0.0153 | **0.0035** |
+| Mostly tracked | 625/874 | 645/874 |
+| Mostly lost | 65/874 | 74/874 |
+| Tracked precision | 0.7940 | **0.8547** |
+| Tracked recall | 0.8504 | **0.8593** |
+| Tracked F1 | 0.8212 | **0.8570** |
 
-**The gain is real and it was oversold.** On the 10 tuning clips the margin was +11.1pp identity
-coverage; on 500 it is **+7.6pp**. Roughly a third of the apparent improvement was fitting the
-tuning set. Both arms also score higher in absolute terms here, because the 10 clips were
-purposively chosen to be hard.
+Adopted settings: activation 0.45, lost-track buffer 120, matching threshold 0.8, minimum track
+length 8, score floor 0.11, interpolation up to 24 frames, 5-frame smoothing, stitching off.
 
-Three results worth keeping separate from the table:
+### What mattered, and what did not
 
-- **Activation threshold did the most work**, raised to 0.40 — twice the detector threshold. Only a
-  strong detection should open a new identity; faint ones should extend an existing track. A
-  108-arm sweep over activation 0.10–0.30 never beat it (best 0.8018 against 0.8197).
-- **Detect permissively, let the tracker filter.** Raw precision at confidence 0.05 is 0.64, but the
-  *tracked* output beats the 0.20 pipeline at higher recall. The tracker discriminates using
-  temporal consistency, which a per-frame threshold has no access to.
-- **Stitching is redundant here, and that is a result.** It demonstrably works (untuned baseline:
-  tracks 59 → 46, fragmentation 2.57 → 2.00) but changes nothing at the tuned operating point,
-  because `lost_track_buffer: 120` already reconnects the same fragments — with a motion model
-  inside the tracker rather than a repair afterwards.
+- **Activation threshold** did the most, raised from 0.20 to 0.45. Since supervision needs
+  `activation + 0.10` to *start* a track, only a 0.55 detection opens an identity while anything
+  above the score floor can extend one. Spurious track creation was the fragmentation.
+- **Matching threshold drives merged tracks**, and nothing else comes close. Mean merged tracks
+  across the sweep were **46.7 / 54.9 / 71.9** at 0.7 / 0.8 / 0.9, while lost-track buffer 30 → 120
+  moved them by about three. A 10-clip sweep had preferred 0.9; on the full dataset that is what
+  fuses two animals into one identity. Permissive association merges apes — a long memory does not.
+- **Detect generously, filter with the tracker.** Raw precision at confidence 0.05 is 0.4683, but
+  the tracked output reaches 0.8547 at higher recall — above the 0.8349 F1 ceiling of the best
+  possible single-frame threshold. See [[model]].
+- **Stitching is redundant here.** It works (untuned baseline: tracks 59 → 46, fragmentation
+  2.57 → 2.00) but changes nothing at these settings, because the 4-second buffer already
+  reconnects the same fragments with a motion model rather than a repair afterwards. Ships off.
 
-> [!warning] One regression, and it is the one that matters
-> Tracks holding two or more apes rose **59 → 79**, purity 0.9970 → 0.9913. As a rate: 2.5% of
-> shipped tracks against 7.0% of candidate tracks. On the 10-clip sample merges had *improved*
-> (3 → 2), so nothing before the full run hinted at it.
->
-> Merging two animals into one track is the failure identity coverage can partly **reward** — both
-> apes then count the merged track as dominant. The rule fixed before measuring was "maximise
-> identity coverage, subject to merges not exceeding baseline", and by that rule the candidate
-> fails. `track-sweep --max-merges` now enforces the ceiling rather than printing the column and
-> hoping someone checks it.
->
-> Open: whether a setting near the candidate keeps most of the +7.6pp while holding merges at 59.
-> [`configs/sweeps/around-candidate.yaml`](../../../configs/sweeps/around-candidate.yaml) answers
-> it, on CPU, over the cache already on disk. If nothing clears the ceiling, adopt the candidate
-> and report the merge cost — do not pick settings that hide it.
+### What it cost
+
+Nine more apes are mostly lost, 65 → 74. Activation 0.45 is strict, so a faint animal that never
+reaches 0.55 never gets a track started. `sitting_on_back` recall fell 0.227 → 0.207 for the same
+reason — a rider is the most occluded case in the dataset.
+
+Purity fell 0.9969 → 0.9944, though merged tracks went *down* (57 → 56), so the pipeline is not
+fusing more animals than before.
+
+> [!note] A third of the first result was overfitting
+> Settings tuned on 10 clips appeared to lift identity coverage by **+11.1pp**. The same settings
+> over 500 clips gave **+7.6pp**. That gap is what validating on unseen clips exists to find, and
+> it is reported rather than quietly dropped. The shipped settings were re-chosen on the full
+> dataset and give +8.3pp.
+
+Full write-up: [phase1 findings 2026-07-28](../../../reports/phase1_findings_2026-07-28.md).
 
 ## Related
 

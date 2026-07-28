@@ -48,9 +48,9 @@ __all__ = [
     "RetrackSettings",
     "SweepArm",
     "expand_grid",
+    "finalise_tracks",
     "load_clip",
     "retrack_document",
-    "stitch_then_shorten",
     "sweep",
     "track_clip",
     "track_clips",
@@ -220,7 +220,6 @@ def retrack_document(
         ``{frame_index: tracked detections}``, after short tracks are dropped.
     """
     from panaf_ape_detection.tracking.bytetrack import ByteTrackTracker
-    from panaf_ape_detection.tracking.refine import refine
 
     video = document["video"]
     tracker = ByteTrackTracker(
@@ -249,44 +248,51 @@ def retrack_document(
         # lost-track buffer never expires.
         tracked[int(frame["frame_index"])] = tracker.update(detections)
 
-    # Stitch before dropping short tracks, so fragments that join into one
-    # long track survive a filter each would have failed alone.
-    stitched = stitch_then_shorten(tracked, settings)
-    return refine(
-        stitched,
-        stitch_max_gap=0,  # already applied, before the length filter
-        interpolate_max_gap=settings.interpolate_max_gap,
-        smooth_window=settings.smooth_window,
-    )
+    return finalise_tracks(tracked, settings)
 
 
-def stitch_then_shorten(
+def finalise_tracks(
     tracked: Mapping[int, Sequence[TrackedDetection]], settings: RetrackSettings
 ) -> dict[int, list[TrackedDetection]]:
-    """Stitch fragments together, then drop whatever is still too short.
+    """Turn raw tracker output into the pipeline's final tracks.
 
-    This order matters and is the reason the two are not simply chained
-    inside :func:`~panaf_ape_detection.tracking.refine.refine`: the 2026-07-26
-    findings record ``minimum_track_length: 5`` deleting 286 detections, 169
-    of them true positives. A fragment that stitches into a long track should
-    not be judged by the length it had on its own.
+    ``stitch -> drop short -> interpolate -> smooth``. **The single place this
+    chain lives**, called by ``detect`` and by ``track`` alike.
+
+    That matters more than it looks. This chain was originally applied only on
+    the re-tracking path, so every measurement went through it while every
+    artifact -- the detections cache, the annotated video -- did not. The
+    refinement settings in ``configs/base.yaml`` were accepted, validated, and
+    silently ignored by the command that produces the deliverables, and the two
+    paths disagreed about what the pipeline even was.
+
+    Stitching runs *before* the length filter deliberately: the 2026-07-26
+    findings record ``minimum_track_length: 5`` deleting 286 detections, 169 of
+    them true positives, and a fragment that joins into a long track should not
+    be judged by the length it had alone.
 
     Args:
-        tracked: Raw tracker output for one clip.
-        settings: The arm's settings.
+        tracked: Raw per-frame output from the tracker.
+        settings: The settings this run is using.
 
     Returns:
-        Stitched tracks with short ones removed.
+        The finished tracks.
     """
     from panaf_ape_detection.tracking.bytetrack import drop_short_tracks
-    from panaf_ape_detection.tracking.refine import stitch_tracks
+    from panaf_ape_detection.tracking.refine import refine, stitch_tracks
 
     stitched = stitch_tracks(
         tracked,
         max_gap=settings.stitch_max_gap,
         max_distance=settings.stitch_max_distance,
     )
-    return dict(drop_short_tracks(stitched, settings.minimum_track_length))
+    shortened = dict(drop_short_tracks(stitched, settings.minimum_track_length))
+    return refine(
+        shortened,
+        stitch_max_gap=0,  # already applied, before the length filter
+        interpolate_max_gap=settings.interpolate_max_gap,
+        smooth_window=settings.smooth_window,
+    )
 
 
 def track_clip(

@@ -353,7 +353,7 @@ def run_clip(
     Returns:
         The clip's :class:`ClipResult`.
     """
-    from panaf_ape_detection.tracking.bytetrack import drop_short_tracks
+    from panaf_ape_detection.pipeline.retrack import RetrackSettings, finalise_tracks
     from panaf_ape_detection.visualization.overlays import draw_frame
     from panaf_ape_detection.visualization.video import VideoWriter
 
@@ -441,12 +441,18 @@ def run_clip(
     # so what is drawn and what is measured cannot diverge.
     tracked_frames: dict[int, list[TrackedDetection]] = {}
     if tracker is not None:
-        tracked_frames = drop_short_tracks(
+        # The same finishing chain the re-tracking path uses, from the same
+        # function. It previously lived only there, so `track` measured a
+        # pipeline that `detect` did not run: the refinement settings in the
+        # config were validated and then ignored by the command that writes the
+        # artifacts. Anyone reproducing the reported numbers would have got
+        # different ones.
+        tracked_frames = finalise_tracks(
             {
                 index: [d for d in detections if isinstance(d, TrackedDetection)]
                 for index, detections in per_frame.items()
             },
-            config.tracking.minimum_track_length,
+            RetrackSettings.from_config(config),
         )
         per_frame = {index: list(dets) for index, dets in tracked_frames.items()}
 
