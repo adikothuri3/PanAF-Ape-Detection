@@ -34,10 +34,9 @@ model:
   # MDV6-yolov10-e since 2026-07-27. Measured head-to-head against MDV6-yolov9-c
   # over the same 10 clips at the same threshold: recall 0.386 -> 0.745 at
   # unchanged precision (0.874 -> 0.862), and tracking coverage 0.351 -> 0.728.
-  # Costs ~22% more compute. It also peaks at the 0.20 threshold below, where
-  # yolov9-c did not. See reports/variant_comparison_2026-07-27.md.
+  # Costs ~22% more compute. See reports/variant_comparison_2026-07-27.md.
   variant: MDV6-yolov10-e
-  confidence_threshold: 0.2
+  confidence_threshold: 0.05
   # Colab GPU (A100 preferred; T4 works). Set the runtime *before* running
   # anything: Runtime -> Change runtime type -> GPU. Inference never runs on CPU
   # (see base.yaml), so this fails fast on a CPU runtime rather than for hours.
@@ -45,14 +44,21 @@ model:
 
 tracking:
   # Must match configs/base.yaml -- `make verify` checks the two agree about
-  # which pipeline stages run. See base.yaml for what each setting does.
+  # which pipeline stages run, and base.yaml explains why each value is what it
+  # is. Chosen by a 72-arm sweep over all 500 clips; see
+  # reports/phase1_findings_2026-07-28.md.
   enabled: true
   backend: bytetrack
-  minimum_track_length: 5
-  activation_threshold: null
-  lost_track_buffer: 30
+  minimum_track_length: 8
+  activation_threshold: 0.45
+  lost_track_buffer: 120
   minimum_matching_threshold: 0.8
   minimum_consecutive_frames: 1
+  score_floor: 0.11
+  stitch_max_gap: 0
+  stitch_max_distance: 1.0
+  interpolate_max_gap: 24
+  smooth_window: 5
 
 video:
   output_fps: 24.0

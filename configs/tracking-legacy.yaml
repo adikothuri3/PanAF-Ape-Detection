@@ -1,0 +1,90 @@
+# The pipeline as it stood before 2026-07-28 — kept so the before/after is reproducible.
+#
+# This is **not** the current configuration. `configs/base.yaml` is, and it is the
+# only source of truth for what the project runs. This file exists for one
+# purpose: to re-measure what was replaced, on the same inputs, whenever the
+# claimed improvement is questioned.
+#
+#   panaf-phase1 track --config configs/tracking-legacy.yaml \
+#       --detections-dir artifacts/full500/detections \
+#       --annotations-dir artifacts/panaf500_annotation_cache \
+#       --metrics-dir artifacts/full500-legacy --detection-floor 0.20
+#
+# `--detection-floor 0.20` matters. The cached detections were written at 0.05,
+# and this configuration ran the detector at 0.20, so the floor is what makes
+# the comparison honest -- without it the old tracker would be handed boxes the
+# old pipeline never saw.
+#
+# Measured that way over all 500 clips, 874 annotated individuals, against
+# base.yaml as adopted:
+#
+#                            legacy    adopted
+#   identity coverage        0.7397     0.8230
+#   coverage                 0.8504     0.8593
+#   ID switches                2257        301
+#   fragmentation              2.48       1.27
+#   track purity             0.9969     0.9944
+#   tracks holding 2+ apes       57         56
+#   jitter                   0.0153     0.0035
+#   mostly tracked          625/874    645/874
+#   mostly lost              65/874     74/874
+#   tracked precision        0.7940     0.8547
+#   tracked recall           0.8504     0.8593
+#   tracked F1               0.8212     0.8570
+#
+# Full write-up: reports/phase1_findings_2026-07-28.md
+
+project:
+  name: panaf-ape-detection
+  seed: 42
+  experiment_name: tracking-legacy
+
+paths:
+  raw_data_dir: data/raw
+  interim_data_dir: data/interim
+  processed_data_dir: data/processed
+  artifacts_dir: artifacts/tracking-legacy
+
+data:
+  manifest_path: data/sample_manifest.csv
+  max_clips: 500
+  frame_stride: 1
+
+model:
+  framework: pytorch-wildlife
+  model_name: MegaDetectorV6
+  variant: MDV6-yolov10-e
+  # The threshold this configuration actually ran at. Believed at the time to be
+  # where the variant peaked; measuring all 500 clips put the single-frame peak
+  # at 0.40 instead, and the pipeline's best operating point at 0.05.
+  confidence_threshold: 0.2
+  device: auto
+
+tracking:
+  # Every tuning field at the value it held before the sweep: activation welded
+  # to the detector threshold, ByteTrack's own defaults for the rest, and no
+  # score floor or refinement, because neither existed.
+  enabled: true
+  backend: bytetrack
+  minimum_track_length: 5
+  activation_threshold: null
+  lost_track_buffer: 30
+  minimum_matching_threshold: 0.8
+  minimum_consecutive_frames: 1
+  score_floor: null
+  stitch_max_gap: 0
+  stitch_max_distance: 1.0
+  interpolate_max_gap: 0
+  smooth_window: 1
+
+video:
+  output_fps: 24.0
+  codec: mp4v
+  draw_confidence: true
+  draw_track_id: true
+  draw_behavior_label: true
+  write_annotated: true
+
+logging:
+  level: INFO
+  save_run_metadata: true

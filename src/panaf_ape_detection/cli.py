@@ -636,6 +636,10 @@ def evaluate(
         bool,
         typer.Option("--per-clip/--pooled-only", help="Show a row per clip, not just the total."),
     ] = True,
+    metrics_dir: Annotated[
+        Path | None,
+        typer.Option("--metrics-dir", help="Also write per-clip metrics here, as `detect` does."),
+    ] = None,
 ) -> None:
     """Recompute accuracy from saved detections, without re-running inference.
 
@@ -646,7 +650,13 @@ def evaluate(
     were already filtered at detection time, so boxes below that threshold were
     never written and cannot be recovered here. Lowering it requires re-running
     ``detect`` with a lower ``model.confidence_threshold``.
+
+    ``--metrics-dir`` writes the result rather than only printing it. Without it
+    a number read off this table traces to nothing, and this project requires
+    every reported number to point at a file.
     """
+    import json as _json
+
     from panaf_ape_detection.evaluation.detection import evaluate_clip
     from panaf_ape_detection.inference.filtering import filter_by_confidence
     from panaf_ape_detection.pipeline.retrack import load_clip
@@ -696,6 +706,11 @@ def evaluate(
             confidence_threshold=threshold,
             model_variant=str(document["model"].get("variant", "")),
         )
+        if metrics_dir is not None:
+            written = Path(metrics_dir) / "metrics" / f"{source.clip_id}.json"
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text(_json.dumps(evaluation.as_dict(), indent=2) + "\n", encoding="utf-8")
+
         counts = evaluation.overall
         totals[0] += counts.true_positives
         totals[1] += counts.false_positives
