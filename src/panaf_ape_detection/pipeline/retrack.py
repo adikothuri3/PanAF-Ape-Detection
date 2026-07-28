@@ -52,6 +52,7 @@ __all__ = [
     "retrack_document",
     "stitch_then_shorten",
     "sweep",
+    "track_clip",
     "track_clips",
 ]
 
@@ -288,6 +289,31 @@ def stitch_then_shorten(
     return dict(drop_short_tracks(stitched, settings.minimum_track_length))
 
 
+def track_clip(
+    clip_id: str,
+    document: Mapping[str, Any],
+    truth: Mapping[int, GroundTruthFrame],
+    settings: RetrackSettings,
+) -> tuple[ClipTrackEvaluation, dict[int, list[TrackedDetection]]]:
+    """Track one clip and evaluate it, returning the tracks as well as the score.
+
+    The tracks are returned because some callers need to *write* them -- the
+    refined boxes are what Phase 2 pose will consume, and evaluating detection
+    accuracy on the tracked output needs them too. A sweep ignores them.
+
+    Args:
+        clip_id: Manifest identifier.
+        document: A parsed ``artifacts/detections/<clip>.json``.
+        truth: Ground truth by frame index.
+        settings: Tracker settings for this arm.
+
+    Returns:
+        ``(evaluation, tracked frames)``.
+    """
+    tracked = retrack_document(document, settings)
+    return evaluate_tracking(clip_id, tracked, truth), tracked
+
+
 def track_clips(
     clips: Iterable[tuple[str, Mapping[str, Any], Mapping[int, GroundTruthFrame]]],
     settings: RetrackSettings,
@@ -301,10 +327,7 @@ def track_clips(
     Returns:
         One evaluation per clip, in the order given.
     """
-    return [
-        evaluate_tracking(clip_id, retrack_document(document, settings), truth)
-        for clip_id, document, truth in clips
-    ]
+    return [track_clip(clip_id, document, truth, settings)[0] for clip_id, document, truth in clips]
 
 
 @dataclass(frozen=True, slots=True)

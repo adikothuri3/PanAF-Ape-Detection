@@ -585,3 +585,44 @@ def test_track_sweep_rejects_arms_that_merge_too_many_apes(
     # and the command should succeed while reporting the ceiling was applied.
     assert result.exit_code == 0, result.output
     assert "rejected" in unwrap(result.output)
+
+
+def test_track_can_write_its_refined_boxes_for_evaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    config_data: dict[str, Any],
+    write_config: WriteConfig,
+):
+    """The tracker's output is a different set of boxes from its input.
+
+    Short tracks are dropped, gaps interpolated, positions smoothed. Without
+    writing that out there is no way to measure the accuracy of what the
+    pipeline actually produces -- only of what the detector handed it.
+    """
+    pytest.importorskip("supervision", reason="requires the inference extra")
+    import json
+
+    from panaf_ape_detection.reporting import detection_cache_settings
+
+    config = _saved_run(tmp_path, config_data, write_config, tracking=True)
+    monkeypatch.setenv("PANAF_REPO_ROOT", str(tmp_path))
+    output = tmp_path / "tracked"
+
+    result = invoke(
+        "track", "--config", str(config), "--metrics-dir", str(output), "--write-detections"
+    )
+
+    assert result.exit_code == 0, result.output
+    written = output / "detections" / "clip-a.json"
+    assert written.is_file()
+
+    document = json.loads(written.read_text(encoding="utf-8"))
+    assert document["tracking"]["enabled"] is True
+    # Provenance of the boxes is the detector that produced them, not the tracker.
+    assert document["model"]["name"] == "MegaDetectorV6"
+    assert all("track_id" in d for f in document["frames"] for d in f["detections"])
+
+    # And the result is a coherent cache that the readers accept.
+    settings = detection_cache_settings(output)
+    assert len(settings) == 1
+    assert next(iter(settings)).tracking_enabled is True
